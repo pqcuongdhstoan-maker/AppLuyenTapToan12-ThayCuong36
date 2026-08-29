@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@media print {
+  header, footer, nav, button, .btn-print, .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .page-break {
+    page-break-before: always;
+  }
+  .shadow-xs, .shadow-md, .shadow-lg, .shadow-xl {
+    box-shadow: none !important;
+  }
+}
