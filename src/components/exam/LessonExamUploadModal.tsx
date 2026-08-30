@@ -15,11 +15,13 @@ import {
   Layers,
   ChevronRight,
   Info,
-  HelpCircle
+  HelpCircle,
+  Download
 } from 'lucide-react';
 import { Lesson, Exam, Question, QuestionType, DifficultyLevel } from '../../types';
 import { storageService } from '../../services/storageService';
 import { parseDocxFile, DocxParsedExam } from '../../services/docxParser';
+import { downloadSampleWordTemplate } from '../../services/docxExporter';
 import { geminiService } from '../../services/geminiService';
 
 interface LessonExamUploadModalProps {
@@ -406,6 +408,27 @@ Yêu cầu số lượng câu:
           {/* --- TAB 1: WORD .DOCX --- */}
           {activeTab === 'word' && (
             <div className="space-y-4">
+              {/* Sample Template Download Card */}
+              <div className="flex items-center justify-between bg-blue-50/80 border border-blue-200 rounded-2xl p-3.5 px-4 shadow-2xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-xs shrink-0 shadow-xs">
+                    DOC
+                  </div>
+                  <div>
+                    <div className="text-xs font-black text-blue-950">File Word Mẫu Chuẩn MathType (.doc/.docx)</div>
+                    <div className="text-[11px] text-blue-700">Đầy đủ cấu trúc 4 phần, bảng biến thiên & công thức mẫu chuẩn Bộ GD&ĐT</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={downloadSampleWordTemplate}
+                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer shrink-0"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Tải file mẫu về máy</span>
+                </button>
+              </div>
+
               <div
                 onDragOver={(e) => { e.preventDefault(); setWordDragActive(true); }}
                 onDragLeave={() => setWordDragActive(false)}

@@ -43,11 +43,11 @@ import { WordImportModal } from './WordImportModal';
 import { WordPreviewModal } from './WordPreviewModal';
 import { DocxParsedExam } from '../../services/docxParser';
 import { MathRenderer } from '../../components/math/MathRenderer';
-import { exportExamToDocx } from '../../services/docxExporter';
+import { exportExamToDocx, downloadSampleWordTemplate } from '../../services/docxExporter';
 import { exportToMoodleXml, exportToMoodleAiken } from '../../services/moodleExporter';
 import { exportLessonToPptx } from '../../services/pptxExporter';
 import { CompetencyRadarChart } from '../../components/analytics/CompetencyRadarChart';
-import { FileDown, Presentation, Code2 } from 'lucide-react';
+import { FileDown, Presentation, Code2, Download } from 'lucide-react';
 
 interface TeacherDashboardViewProps {
   currentUser: User;
@@ -762,16 +762,29 @@ export const TeacherDashboardView: React.FC<TeacherDashboardViewProps> = ({ curr
       {activeTab === 'export-tools' && (
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-6">
           <div>
-            <div className="flex items-center gap-2 text-xs font-bold text-emerald-700 uppercase tracking-wider mb-1">
-              <FileDown className="w-4 h-4" />
-              <span>TRUNG TÂM XUẤT BẢN TÀI LIỆU & BÀI GIẢNG TOÁN 12</span>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-bold text-emerald-700 uppercase tracking-wider mb-1">
+                  <FileDown className="w-4 h-4" />
+                  <span>TRUNG TÂM XUẤT BẢN TÀI LIỆU & BÀI GIẢNG TOÁN 12</span>
+                </div>
+                <h3 className="text-lg font-black text-slate-900">
+                  Xuất Đề Thi Word, Slide PowerPoint & LMS Moodle
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Tải về đề thi định dạng chuẩn Microsoft Word, Slide trình chiếu bài giảng, hoặc tệp nhập trực tiếp vào hệ thống LMS Moodle/Azota.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={downloadSampleWordTemplate}
+                className="px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs flex items-center gap-2 shadow-sm transition-all cursor-pointer shrink-0"
+              >
+                <Download className="w-4 h-4" />
+                <span>Tải File Word Mẫu Chuẩn (.doc/.docx)</span>
+              </button>
             </div>
-            <h3 className="text-lg font-black text-slate-900">
-              Xuất Đề Thi Word, Slide PowerPoint & LMS Moodle
-            </h3>
-            <p className="text-xs text-slate-500">
-              Tải về đề thi định dạng chuẩn Microsoft Word, Slide trình chiếu bài giảng, hoặc tệp nhập trực tiếp vào hệ thống LMS Moodle/Azota.
-            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

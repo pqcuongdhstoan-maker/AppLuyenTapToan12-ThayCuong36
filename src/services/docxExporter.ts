@@ -322,3 +322,249 @@ export function exportExamToDocx(exam: Exam, lesson?: Lesson): void {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+/**
+ * Generates and downloads the official Standard Word (.docx/.doc) Template
+ * for teachers to write 4-part Math exams with MathType/Equation.
+ */
+export function downloadSampleWordTemplate(): void {
+  const sampleDocHtml = `
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+  <meta charset="utf-8">
+  <title>Mẫu Soạn Đề Thi Toán 12 - Thầy Phan Quốc Cường</title>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 2cm 2cm 2cm 2cm;
+    }
+    body {
+      font-family: "Times New Roman", Times, serif;
+      font-size: 13pt;
+      line-height: 1.4;
+      color: #000;
+    }
+    .header-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+    }
+    .header-table td {
+      vertical-align: top;
+      padding: 4px;
+    }
+    .school-name {
+      font-size: 11pt;
+      font-weight: bold;
+      text-align: center;
+      text-transform: uppercase;
+    }
+    .exam-title {
+      font-size: 14pt;
+      font-weight: bold;
+      text-align: center;
+      text-transform: uppercase;
+      margin-top: 5px;
+      color: #003366;
+    }
+    .guide-box {
+      border: 2px dashed #0066cc;
+      background-color: #f0f7ff;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      border-radius: 6px;
+      font-size: 11.5pt;
+    }
+    .section-title {
+      font-weight: bold;
+      font-size: 13pt;
+      text-transform: uppercase;
+      background-color: #e6f0fa;
+      padding: 6px 10px;
+      border-left: 5px solid #0055aa;
+      margin-top: 20px;
+      margin-bottom: 10px;
+    }
+    .question-box {
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px dotted #bbb;
+    }
+    .question-title {
+      font-weight: bold;
+      color: #003366;
+    }
+    .options-grid {
+      margin: 8px 0 6px 15px;
+    }
+    .solution-box {
+      margin-top: 6px;
+      background-color: #f9f9f9;
+      padding: 6px 10px;
+      border-left: 3px solid #28a745;
+      font-size: 12pt;
+      color: #222;
+    }
+    .table-bt {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: center;
+      margin: 10px 0;
+    }
+    .table-bt th, .table-bt td {
+      border: 1px solid #333;
+      padding: 6px 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER TRƯỜNG & TÊN ĐỀ -->
+  <table class="header-table">
+    <tr>
+      <td style="width: 45%; text-align: center;">
+        <div class="school-name">HỆ THỐNG TỰ LUYỆN TOÁN 12</div>
+        <div style="font-size: 11pt; font-weight: bold;">GV: PHAN QUỐC CƯỜNG</div>
+        <div style="border-top: 1px solid #000; width: 60%; margin: 3px auto;"></div>
+      </td>
+      <td style="width: 55%; text-align: center;">
+        <div class="school-name">ĐỀ KIỂM TRA ĐỊNH KỲ MÔN TOÁN 12</div>
+        <div style="font-size: 11pt; font-style: italic;">Thời gian làm bài: 45 phút (không kể phát đề)</div>
+        <div style="border-top: 1px solid #000; width: 60%; margin: 3px auto;"></div>
+      </td>
+    </tr>
+  </table>
+
+  <div class="exam-title">MẪU SOẠN ĐỀ THI TOÁN 12 CHUẨN MATHTYPE (4 PHẦN)</div>
+  <div style="text-align: center; font-style: italic; font-size: 11pt; margin-bottom: 15px;">(Thầy/Cô chỉ cần chỉnh sửa nội dung trong file này và tải lên hệ thống)</div>
+
+  <!-- KHUNG HƯỚNG DẪN CHO GIÁO VIÊN -->
+  <div class="guide-box">
+    <strong style="color: #004488; font-size: 12pt;">📌 HƯỚNG DẪN SOẠN ĐỀ BẰNG MATHTYPE / EQUATION:</strong>
+    <ul style="margin: 5px 0 0 0; padding-left: 20px;">
+      <li><strong>Công thức Toán:</strong> Chèn bằng <em>MathType</em> hoặc <em>Insert Equation</em> của Word như bình thường, không cần gõ code.</li>
+      <li><strong>Đáp án đúng Phần I:</strong> Thêm dòng <em>"Lời giải: ... Chọn A"</em> hoặc gạch chân <u>A.</u></li>
+      <li><strong>Phần II (Đúng/Sai):</strong> Ghi chữ <em>(Đúng)</em> hoặc <em>(Sai)</em> ở cuối mỗi ý a, b, c, d.</li>
+      <li><strong>Phần III (Trả lời ngắn):</strong> Ghi dòng <em>"Đáp án: [số]"</em> bên dưới câu hỏi.</li>
+      <li><strong>Hình vẽ / Đồ thị:</strong> Copy và Paste ảnh trực tiếp vào vị trí câu hỏi trong Word.</li>
+    </ul>
+  </div>
+
+  <!-- PHẦN I -->
+  <div class="section-title">PHẦN I. Câu trắc nghiệm nhiều phương án lựa chọn (Thí sinh trả lời từ câu 1 đến câu 2)</div>
+
+  <div class="question-box">
+    <span class="question-title">Câu 1:</span> Cho hàm số y = (x^2 + 3)/(x - 1). Giá trị lớn nhất của hàm số trên đoạn [2; 4] là:
+    <div class="options-grid">
+      <strong>A.</strong> 7 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+      <strong>B.</strong> 19/3 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+      <strong>C.</strong> 4 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+      <strong>D.</strong> 5
+    </div>
+    <div class="solution-box">
+      <strong>Lời giải:</strong> Ta có đạo hàm y' = (x^2 - 2x - 3)/(x - 1)^2 = 0 <=> x = 3 (thỏa mãn đoạn [2; 4]). Tính y(2) = 7, y(3) = 6, y(4) = 19/3. Vậy giá trị lớn nhất là 7. <strong>Chọn A.</strong>
+    </div>
+  </div>
+
+  <div class="question-box">
+    <span class="question-title">Câu 2:</span> Cho hàm số y = f(x) có bảng biến thiên như sau:
+    <table class="table-bt">
+      <tr style="background-color: #f2f2f2;">
+        <th style="width: 15%;">x</th>
+        <th>-∞</th>
+        <th>-1</th>
+        <th>0</th>
+        <th>1</th>
+        <th>+∞</th>
+      </tr>
+      <tr>
+        <td><strong>y'</strong></td>
+        <td>+</td>
+        <td>0</td>
+        <td>-</td>
+        <td>0</td>
+        <td>+</td>
+      </tr>
+      <tr>
+        <td><strong>y</strong></td>
+        <td>-∞ ↗ 5</td>
+        <td>5 ↘ -2</td>
+        <td>-2</td>
+        <td>-2 ↗ +∞</td>
+        <td>+∞</td>
+      </tr>
+    </table>
+    Hàm số đã cho đồng biến trên khoảng nào dưới đây?
+    <div class="options-grid">
+      <strong>A.</strong> (-1; 1) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+      <strong>B.</strong> (-∞; -1) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+      <strong>C.</strong> (0; 1) &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+      <strong>D.</strong> (-1; 0)
+    </div>
+    <div class="solution-box">
+      <strong>Lời giải:</strong> Dựa vào bảng biến thiên, y' > 0 trên các khoảng (-∞; -1) và (1; +∞). <strong>Chọn B.</strong>
+    </div>
+  </div>
+
+  <!-- PHẦN II -->
+  <div class="section-title">PHẦN II. Câu trắc nghiệm Đúng / Sai (Trong mỗi ý a, b, c, d, chọn Đúng hoặc Sai)</div>
+
+  <div class="question-box">
+    <span class="question-title">Câu 3:</span> Cho hàm số bậc ba y = f(x) = x^3 - 3x^2 + 2 có đồ thị là (C). Xét tính đúng/sai của các mệnh đề sau:
+    <div style="margin: 8px 0 8px 15px;">
+      a) Đạo hàm của hàm số là y' = 3x^2 - 6x. <strong>(Đúng)</strong><br>
+      b) Hàm số đồng biến trên khoảng (2; +∞). <strong>(Đúng)</strong><br>
+      c) Giá trị cực tiểu của hàm số bằng 2. <strong>(Sai)</strong><br>
+      d) Điểm cực đại của đồ thị hàm số là (0; 2). <strong>(Đúng)</strong>
+    </div>
+    <div class="solution-box">
+      <strong>Lời giải:</strong> Ta có y' = 3x^2 - 6x = 0 <=> x = 0 hoặc x = 2. Giá trị cực tiểu là y(2) = -2 (mệnh đề c sai).
+    </div>
+  </div>
+
+  <!-- PHẦN III -->
+  <div class="section-title">PHẦN III. Câu trắc nghiệm Trả lời ngắn (Thí sinh điền kết quả dạng số)</div>
+
+  <div class="question-box">
+    <span class="question-title">Câu 4:</span> Tìm số điểm cực trị của đồ thị hàm số y = x^4 - 2x^2 + 2026.
+    <div class="solution-box">
+      <strong>Đáp án: 3</strong><br>
+      <strong>Lời giải:</strong> Ta có y' = 4x^3 - 4x = 4x(x^2 - 1) = 0 có 3 nghiệm phân biệt x = 0, x = 1, x = -1. Do đó đồ thị hàm số có 3 điểm cực trị.
+    </div>
+  </div>
+
+  <!-- PHẦN IV -->
+  <div class="section-title">PHẦN IV. Câu hỏi Tự luận (Vận dụng toán thực tế)</div>
+
+  <div class="question-box">
+    <span class="question-title">Câu 5:</span> Một công ty sản xuất x thiết bị điện tử với tổng chi phí trung bình cho mỗi thiết bị là C(x) = x + 3600/x (nghìn đồng), với x > 0. Hỏi công ty cần sản xuất bao nhiêu thiết bị để chi phí trung bình trên mỗi thiết bị là nhỏ nhất?
+    <div class="solution-box">
+      <strong>Lời giải:</strong><br>
+      - Xét hàm số C(x) = x + 3600/x trên (0; +∞).<br>
+      - Đạo hàm: C'(x) = 1 - 3600/x^2.<br>
+      - Cho C'(x) = 0 <=> x^2 = 3600 <=> x = 60 (do x > 0).<br>
+      - Lập bảng biến thiên ta thấy C(x) đạt giá trị nhỏ nhất tại x = 60 thiết bị, khi đó chi phí nhỏ nhất là 120 nghìn đồng.
+    </div>
+  </div>
+
+  <div style="text-align: center; margin-top: 30px; font-weight: bold;">
+    ---------- HẾT ----------
+  </div>
+
+</body>
+</html>
+`;
+
+  const blob = new Blob(['\ufeff', sampleDocHtml], {
+    type: 'application/msword;charset=utf-8'
+  });
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Mau_Soan_De_Thi_Toan12_Thpt_ThayCuong.doc`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
