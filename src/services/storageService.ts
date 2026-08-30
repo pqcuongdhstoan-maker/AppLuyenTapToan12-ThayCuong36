@@ -69,20 +69,18 @@ class StorageService {
         localStorage.setItem(KEYS.USERS, JSON.stringify(updated));
       } catch {}
     }
-    if (!localStorage.getItem(KEYS.CURRENT_USER)) {
-      // Default to student Nguyễn Văn An or Teacher Phan Quốc Cường
-      localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(INITIAL_USERS[2]));
-    } else {
-      // Migrate current user if was old admin
-      try {
-        const curr = JSON.parse(localStorage.getItem(KEYS.CURRENT_USER) || '{}');
-        if (curr.id === 'user_admin' && curr.fullName?.includes('Ban Giám Hiệu')) {
+    // Migrate current user if was old admin
+    try {
+      const rawCurr = localStorage.getItem(KEYS.CURRENT_USER);
+      if (rawCurr) {
+        const curr = JSON.parse(rawCurr);
+        if (curr.id === 'user_admin' && (curr.fullName?.includes('Ban Giám Hiệu') || !curr.fullName?.includes('Phan Quốc Cường'))) {
           curr.fullName = 'Phan Quốc Cường (Quản trị viên)';
           curr.email = 'cuong.pq@duchoa.edu.vn';
           localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(curr));
         }
-      } catch {}
-    }
+      }
+    } catch {}
     if (!localStorage.getItem(KEYS.CLASSES)) {
       localStorage.setItem(KEYS.CLASSES, JSON.stringify(INITIAL_CLASSES));
     }
@@ -177,6 +175,12 @@ class StorageService {
   getCurrentUser(): User | null {
     this.init();
     try {
+      // Require active login session when opening link in new tab / browser
+      const isSessionActive = sessionStorage.getItem('appmath_session_active');
+      if (!isSessionActive) {
+        return null;
+      }
+
       const raw = localStorage.getItem(KEYS.CURRENT_USER);
       if (raw) return JSON.parse(raw);
     } catch (e) {
@@ -186,12 +190,18 @@ class StorageService {
   }
 
   logout(): void {
-    localStorage.removeItem(KEYS.CURRENT_USER);
+    try {
+      sessionStorage.removeItem('appmath_session_active');
+      localStorage.removeItem(KEYS.CURRENT_USER);
+    } catch {}
     this.logAudit('USER_LOGOUT', 'Người dùng đã đăng xuất');
   }
 
   setCurrentUser(user: User): void {
-    localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(user));
+    try {
+      sessionStorage.setItem('appmath_session_active', 'true');
+      localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(user));
+    } catch {}
     this.logAudit('USER_LOGIN', `Người dùng ${user.fullName} (${user.role}) đăng nhập`);
   }
 
