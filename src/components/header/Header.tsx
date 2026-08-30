@@ -56,6 +56,37 @@ export const Header: React.FC<HeaderProps> = ({
   const [hasApiKey, setHasApiKey] = useState(geminiService.hasApiKey());
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
 
+  const profileMenuRef = React.useRef<HTMLDivElement>(null);
+  const toolsMenuRef = React.useRef<HTMLDivElement>(null);
+
+  // Close dropdowns on outside click
+  React.useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setShowProfileMenu(false);
+      }
+      if (toolsMenuRef.current && !toolsMenuRef.current.contains(event.target as Node)) {
+        setShowToolsDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  const handleLogout = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    storageService.logout();
+    setShowProfileMenu(false);
+    if (onLogout) {
+      onLogout();
+    } else {
+      onUserChange(null as any);
+    }
+  };
+
   const handleAdminNavClick = (view: 'teacher-dashboard' | 'admin-dashboard') => {
     // If user is already ADMIN or authenticated in this session, navigate directly
     if (isAdminAuthenticated) {
@@ -320,7 +351,7 @@ export const Header: React.FC<HeaderProps> = ({
                 {/* Profile Dropdown Menu */}
                 {showProfileMenu && (
                   <div
-                    onMouseLeave={() => setShowProfileMenu(false)}
+                    ref={profileMenuRef}
                     className="absolute right-0 mt-2 w-72 bg-white rounded-3xl shadow-2xl border border-slate-200 py-2.5 z-50 animate-in fade-in zoom-in-95 duration-100"
                   >
                     {/* User Info Header */}
@@ -346,7 +377,7 @@ export const Header: React.FC<HeaderProps> = ({
                           setShowAuthModal(true);
                           setShowProfileMenu(false);
                         }}
-                        className="w-full text-left px-4 py-2 text-xs font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2.5 transition-colors"
+                        className="w-full text-left px-4 py-2 text-xs font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2.5 transition-colors cursor-pointer"
                       >
                         <KeyRound className="w-3.5 h-3.5 text-indigo-600" />
                         Đổi mật khẩu tài khoản
@@ -360,7 +391,7 @@ export const Header: React.FC<HeaderProps> = ({
                               setShowProvisioningModal(true);
                               setShowProfileMenu(false);
                             }}
-                            className="w-full text-left px-4 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 flex items-center gap-2.5 transition-colors"
+                            className="w-full text-left px-4 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 flex items-center gap-2.5 transition-colors cursor-pointer"
                           >
                             <Users className="w-3.5 h-3.5 text-blue-600" />
                             Trung tâm Cấp tài khoản & Mật khẩu
@@ -371,7 +402,7 @@ export const Header: React.FC<HeaderProps> = ({
                               handleAdminNavClick('admin-dashboard');
                               setShowProfileMenu(false);
                             }}
-                            className="w-full text-left px-4 py-2 text-xs font-bold text-purple-700 hover:bg-purple-50 flex items-center gap-2.5 transition-colors"
+                            className="w-full text-left px-4 py-2 text-xs font-bold text-purple-700 hover:bg-purple-50 flex items-center gap-2.5 transition-colors cursor-pointer"
                           >
                             <ShieldAlert className="w-3.5 h-3.5 text-purple-600" />
                             Quản trị Hệ thống (Admin)
@@ -387,7 +418,7 @@ export const Header: React.FC<HeaderProps> = ({
                           setShowAuthModal(true);
                           setShowProfileMenu(false);
                         }}
-                        className="w-full text-left px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors"
+                        className="w-full text-left px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer"
                       >
                         <LogIn className="w-3.5 h-3.5 text-slate-500" />
                         Đăng nhập tài khoản khác
@@ -399,26 +430,20 @@ export const Header: React.FC<HeaderProps> = ({
                           setShowAuthModal(true);
                           setShowProfileMenu(false);
                         }}
-                        className="w-full text-left px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors"
+                        className="w-full text-left px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer"
                       >
                         <UserPlus className="w-3.5 h-3.5 text-slate-500" />
                         Đăng ký học sinh mới
                       </button>
                     </div>
 
-                    <div className="border-t border-slate-100 pt-1.5 mt-1">
+                    <div className="border-t border-slate-100 pt-1.5 mt-1 px-1">
                       <button
-                        onClick={() => {
-                          storageService.logout();
-                          if (onLogout) {
-                            onLogout();
-                          }
-                          setShowProfileMenu(false);
-                        }}
-                        className="w-full text-left px-4 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2.5 transition-colors cursor-pointer"
+                        onClick={handleLogout}
+                        className="w-full text-left px-3 py-2.5 text-xs font-black text-rose-600 hover:bg-rose-50 rounded-xl flex items-center gap-2.5 transition-colors cursor-pointer"
                       >
-                        <LogOut className="w-3.5 h-3.5" />
-                        Đăng xuất
+                        <LogOut className="w-4 h-4 text-rose-600" />
+                        <span>Đăng xuất</span>
                       </button>
                     </div>
                   </div>
