@@ -112,8 +112,195 @@ function createSvgArrow(type: 'up' | 'down' | 'right'): string {
 }
 
 /**
- * Converts LaTeX array/tabular and variation tables into crisp, textbook-grade HTML tables
- * Exactly matching standard Vietnamese Calculus textbooks: 1 vertical line, 2 horizontal lines, no outer box.
+ * Formats math symbols into clean Unicode text for SVG rendering
+ */
+function formatMathForSvg(raw: string): string {
+  if (!raw) return '';
+  return raw
+    .replace(/\$/g, '')
+    .replace(/\\infty/g, '∞')
+    .replace(/\\minus|\\textminus|−/g, '−')
+    .replace(/-\\infty/g, '−∞')
+    .replace(/\+\\infty/g, '+∞')
+    .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '$1/$2')
+    .replace(/\\nearrow|\\searrow|\\rightarrow/g, '')
+    .trim();
+}
+
+/**
+ * Converts variation table into a high-precision vector SVG diagram
+ * where arrows start EXACTLY at the source number and point EXACTLY at the destination number.
+ */
+export function renderVariationTableSvg(parsedRows: string[][]): string {
+  if (parsedRows.length < 3) return '';
+
+  const maxCols = Math.max(...parsedRows.map(r => r.length));
+  if (maxCols < 3) return '';
+
+  // Extract labels
+  let xLabel = formatMathForSvg(parsedRows[0][0]) || 'x';
+  let fPrimeLabel = formatMathForSvg(parsedRows[1][0]) || "f '(x)";
+  let fLabel = formatMathForSvg(parsedRows[2][0]) || 'f(x)';
+
+  if (fPrimeLabel.includes("'") && !fPrimeLabel.includes('(')) {
+    fPrimeLabel = "y'";
+  }
+  if (fLabel === 'y' || fLabel === 'f') {
+    fLabel = fLabel === 'y' ? 'y' : 'f(x)';
+  }
+
+  // Calculate layout geometry
+  const headerWidth = 65;
+  const numDataCols = maxCols - 1;
+  const colWidth = Math.max(70, Math.min(100, Math.floor(480 / numDataCols)));
+  const totalWidth = headerWidth + numDataCols * colWidth + 20;
+  const totalHeight = 175;
+
+  const row1Y = 27; // x row
+  const row2Y = 67; // f'(x) row
+  const line1Y = 42; // divide under x
+  const line2Y = 84; // divide under f'(x)
+  const topValY = 110; // f(x) top values
+  const botValY = 154; // f(x) bottom values
+
+  // Find column center coordinates
+  const colX: number[] = [];
+  for (let c = 1; c < maxCols; c++) {
+    colX[c] = headerWidth + (c - 0.5) * colWidth;
+  }
+
+  // Extract f(x) points and arrows
+  // In parsedRows:
+  // parsedRows[2] has top values
+  // parsedRows[3] (if exists) has bottom values and arrows
+  const topRow = parsedRows[2] || [];
+  const botRow = parsedRows[3] || [];
+
+  interface VariationNode {
+    col: number;
+    x: number;
+    y: number;
+    val: string;
+    level: 'top' | 'bottom';
+  }
+
+  const nodes: VariationNode[] = [];
+
+  for (let c = 1; c < maxCols; c++) {
+    const topCell = formatMathForSvg(topRow[c] || '');
+    const botCell = formatMathForSvg(botRow[c] || '');
+
+    if (topCell && !topCell.includes('↗') && !topCell.includes('↘')) {
+      nodes.push({
+        col: c,
+        x: colX[c],
+        y: topValY,
+        val: topCell,
+        level: 'top'
+      });
+    }
+    if (botCell && !botCell.includes('↗') && !botCell.includes('↘')) {
+      nodes.push({
+        col: c,
+        x: colX[c],
+        y: botValY,
+        val: botCell,
+        level: 'bottom'
+      });
+    }
+  }
+
+  // Sort nodes by column index
+  nodes.sort((a, b) => a.col - b.col);
+
+  const markerId = `stealth_arr_${++arrowIdCounter}`;
+
+  let svgContent = `<div class="my-6 overflow-x-auto flex justify-center py-2">
+    <svg viewBox="0 0 ${totalWidth} ${totalHeight}" class="w-full max-w-2xl select-none font-serif" style="min-width: 320px;" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="${markerId}" viewBox="0 0 10 10" refX="7.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+          <path d="M 0 1.5 L 8.5 5 L 0 8.5 L 2 5 Z" fill="#0f172a" />
+        </marker>
+      </defs>
+
+      <!-- 1 Vertical Dividing Line -->
+      <line x1="${headerWidth}" y1="4" x2="${headerWidth}" y2="${totalHeight - 6}" stroke="#334155" stroke-width="1.2" />
+
+      <!-- 2 Horizontal Dividing Lines -->
+      <line x1="8" y1="${line1Y}" x2="${totalWidth - 8}" y2="${line1Y}" stroke="#334155" stroke-width="1.2" />
+      <line x1="8" y1="${line2Y}" x2="${totalWidth - 8}" y2="${line2Y}" stroke="#334155" stroke-width="1.2" />
+
+      <!-- Header Labels (Left Column) -->
+      <text x="${headerWidth / 2}" y="${row1Y}" text-anchor="middle" font-size="16" font-style="italic" fill="#0f172a" font-weight="600">${xLabel}</text>
+      <text x="${headerWidth / 2}" y="${row2Y}" text-anchor="middle" font-size="16" font-style="italic" fill="#0f172a" font-weight="600">${fPrimeLabel}</text>
+      <text x="${headerWidth / 2}" y="${(line2Y + totalHeight) / 2 + 5}" text-anchor="middle" font-size="16" font-style="italic" fill="#0f172a" font-weight="600">${fLabel}</text>
+  `;
+
+  // Row 1: x values
+  for (let c = 1; c < maxCols; c++) {
+    const val = formatMathForSvg(parsedRows[0][c] || '');
+    if (val) {
+      svgContent += `<text x="${colX[c]}" y="${row1Y}" text-anchor="middle" font-size="15" fill="#0f172a">${val}</text>`;
+    }
+  }
+
+  // Row 2: f'(x) signs (+, -, 0, ||)
+  for (let c = 1; c < maxCols; c++) {
+    const val = formatMathForSvg(parsedRows[1][c] || '');
+    if (val === '||' || val === '|') {
+      svgContent += `<line x1="${colX[c] - 2}" y1="${line1Y + 4}" x2="${colX[c] - 2}" y2="${line2Y - 4}" stroke="#64748b" stroke-width="1.2" />`;
+      svgContent += `<line x1="${colX[c] + 2}" y1="${line1Y + 4}" x2="${colX[c] + 2}" y2="${line2Y - 4}" stroke="#64748b" stroke-width="1.2" />`;
+    } else if (val === '+') {
+      svgContent += `<text x="${colX[c]}" y="${row2Y}" text-anchor="middle" font-size="16" font-weight="bold" fill="#2563eb">+</text>`;
+    } else if (val === '-' || val === '−') {
+      svgContent += `<text x="${colX[c]}" y="${row2Y}" text-anchor="middle" font-size="16" font-weight="bold" fill="#e11d48">−</text>`;
+    } else if (val) {
+      svgContent += `<text x="${colX[c]}" y="${row2Y}" text-anchor="middle" font-size="15" fill="#0f172a">${val}</text>`;
+    }
+  }
+
+  // Row 3: f(x) nodes (numbers)
+  nodes.forEach(node => {
+    svgContent += `<text x="${node.x}" y="${node.y}" text-anchor="middle" font-size="16" font-weight="500" fill="#0f172a">${node.val}</text>`;
+  });
+
+  // Row 3: Arrows connecting consecutive nodes directly!
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const n1 = nodes[i];
+    const n2 = nodes[i + 1];
+
+    // Estimate text width offset so arrow starts directly from edge of number
+    const textOffset1 = Math.max(10, n1.val.length * 5 + 4);
+    const textOffset2 = Math.max(10, n2.val.length * 5 + 4);
+
+    let startX = n1.x + textOffset1;
+    let endX = n2.x - textOffset2;
+
+    let startY = n1.y - 5;
+    let endY = n2.y - 5;
+
+    // Upward arrow: bottom to top
+    if (n1.level === 'bottom' && n2.level === 'top') {
+      startY = botValY - 6;
+      endY = topValY - 2;
+    }
+    // Downward arrow: top to bottom
+    else if (n1.level === 'top' && n2.level === 'bottom') {
+      startY = topValY - 2;
+      endY = botValY - 6;
+    }
+
+    if (endX > startX + 15) {
+      svgContent += `<line x1="${startX}" y1="${startY}" x2="${endX}" y2="${endY}" stroke="#0f172a" stroke-width="1.5" stroke-linecap="round" marker-end="url(#${markerId})" />`;
+    }
+  }
+
+  svgContent += `</svg></div>`;
+  return svgContent;
+}
+
+/**
+ * Converts LaTeX array/tabular and variation tables into crisp, textbook-grade HTML/SVG tables
  */
 export function renderLatexTableToHtml(rawTable: string): string {
   // Strip outer array / tabular / center wrappers
@@ -140,59 +327,37 @@ export function renderLatexTableToHtml(rawTable: string): string {
 
   if (parsedRows.length === 0) return '';
 
-  // Calculate max columns
+  // Check if this is a variation table (contains x, f'/y', and arrows or levels)
+  const isVariationTable = (
+    parsedRows.length >= 3 &&
+    (parsedRows[0][0]?.includes('x') || parsedRows[0][0]?.includes('X')) &&
+    (rawTable.includes('\\nearrow') || rawTable.includes('\\searrow') || rawTable.includes('↗') || rawTable.includes('↘') || parsedRows.length >= 4)
+  );
+
+  if (isVariationTable) {
+    const svgTable = renderVariationTableSvg(parsedRows);
+    if (svgTable) return svgTable;
+  }
+
+  // Fallback to HTML table for other generic mathematical tables / matrices
   const maxCols = Math.max(...parsedRows.map(r => r.length));
-
-  // Determine if row 2 (f(x) or y) has a sub-row for bottom values/arrows
-  const hasSubRowForF = parsedRows.length >= 4 && parsedRows[3] && !parsedRows[3][0];
-
-  // Build textbook-style table with ONLY 1 vertical line and 2 horizontal lines
-  let html = `<div class="my-6 overflow-x-auto flex justify-center py-2">
-    <table class="border-collapse bg-transparent text-sm sm:text-base font-serif select-none" style="border: none;">
+  let html = `<div class="my-4 overflow-x-auto flex justify-center py-1">
+    <table class="border-collapse border border-slate-400 bg-white text-xs sm:text-sm font-sans shadow-xs rounded-xl overflow-hidden my-2 border-spacing-0">
       <tbody>`;
 
   parsedRows.forEach((row, rowIdx) => {
-    // Pad row with empty cells if shorter than maxCols
     while (row.length < maxCols) {
       row.push('');
     }
 
-    const isFirstRow = rowIdx === 0;
-    const isSecondRow = rowIdx === 1;
-    const isThirdRow = rowIdx === 2;
-    const isFourthRow = rowIdx === 3;
-
-    // Horizontal line ONLY under row 0 (x) and row 1 (y')
-    const hasBottomBorder = isFirstRow || isSecondRow;
-
-    html += `<tr class="${hasBottomBorder ? 'border-b border-slate-700/80' : ''}">`;
+    const hasBottomBorder = rowIdx < parsedRows.length - 1;
+    html += `<tr class="${hasBottomBorder ? 'border-b border-slate-300' : ''}">`;
 
     row.forEach((cell, colIdx) => {
       const isHeaderCol = colIdx === 0;
       let cellContent = cell.trim();
 
-      // If this is sub-row 4 and row 3 already spanned column 0, skip header cell
-      if (hasSubRowForF && isFourthRow && isHeaderCol) {
-        return;
-      }
-
-      // Convert arrows to thin, long, elegant SVG vector paths
-      if (cellContent.includes('\\nearrow') || cellContent === '↗' || cellContent.includes('nearrow')) {
-        cellContent = createSvgArrow('up');
-      } else if (cellContent.includes('\\searrow') || cellContent === '↘' || cellContent.includes('searrow')) {
-        cellContent = createSvgArrow('down');
-      } else if (cellContent.includes('\\rightarrow') || cellContent === '→' || cellContent.includes('rightarrow')) {
-        cellContent = createSvgArrow('right');
-      } else if (cellContent === '||' || cellContent === '\\|\\|' || cellContent === '|') {
-        cellContent = '<span class="text-slate-500 font-bold tracking-tighter text-sm">||</span>';
-      } else if (cellContent === '+' || cellContent === '$+$') {
-        cellContent = '<span class="text-slate-900 font-normal text-base">+</span>';
-      } else if (cellContent === '-' || cellContent === '$-$' || cellContent === '−') {
-        cellContent = '<span class="text-slate-900 font-normal text-base">−</span>';
-      } else if (cellContent === '0' || cellContent === '$0$') {
-        cellContent = '<span class="text-slate-900 font-normal">0</span>';
-      } else if (cellContent) {
-        // Render math for numbers, variables, expressions
+      if (cellContent) {
         try {
           cellContent = katex.renderToString(cellContent, {
             displayMode: false,
@@ -207,11 +372,9 @@ export function renderLatexTableToHtml(rawTable: string): string {
       }
 
       if (isHeaderCol) {
-        const rowSpanAttr = hasSubRowForF && isThirdRow ? 'rowspan="2"' : '';
-        html += `<td ${rowSpanAttr} class="border-r border-slate-700/80 pr-4 sm:pr-6 pl-2 py-2 text-center whitespace-nowrap align-middle font-serif italic text-base sm:text-lg text-slate-900">${cellContent}</td>`;
+        html += `<td class="border-r border-slate-300 bg-slate-50 font-bold text-slate-800 px-3.5 py-2 text-center whitespace-nowrap align-middle">${cellContent}</td>`;
       } else {
-        const isArrowCell = cellContent.includes('<svg');
-        html += `<td class="px-2 sm:px-4 py-1.5 text-center text-slate-900 font-serif ${isArrowCell ? 'min-w-[6.5rem] sm:min-w-[9rem]' : 'min-w-[3rem] sm:min-w-[4.2rem]'} align-middle">${cellContent}</td>`;
+        html += `<td class="px-3 py-2 text-center text-slate-800 font-medium align-middle">${cellContent}</td>`;
       }
     });
 
