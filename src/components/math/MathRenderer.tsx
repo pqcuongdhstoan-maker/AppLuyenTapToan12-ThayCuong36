@@ -68,6 +68,34 @@ export function preprocessMathContent(rawText: string): string {
 }
 
 /**
+ * Generates delicate, long SVG vector arrows for variation tables
+ */
+function createSvgArrow(type: 'up' | 'down' | 'right'): string {
+  if (type === 'up') {
+    return `<div class="w-full flex items-center justify-center min-w-[3.5rem] sm:min-w-[4.5rem] py-1">
+      <svg viewBox="0 0 80 32" class="w-full max-w-[90px] h-6 sm:h-7 stroke-slate-800" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <line x1="6" y1="26" x2="72" y2="6" stroke-width="1.2" stroke-linecap="round" />
+        <polyline points="60,6 72,6 72,18" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    </div>`;
+  }
+  if (type === 'down') {
+    return `<div class="w-full flex items-center justify-center min-w-[3.5rem] sm:min-w-[4.5rem] py-1">
+      <svg viewBox="0 0 80 32" class="w-full max-w-[90px] h-6 sm:h-7 stroke-slate-800" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <line x1="6" y1="6" x2="72" y2="26" stroke-width="1.2" stroke-linecap="round" />
+        <polyline points="60,26 72,26 72,14" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    </div>`;
+  }
+  return `<div class="w-full flex items-center justify-center min-w-[3.5rem] sm:min-w-[4.5rem] py-1">
+    <svg viewBox="0 0 80 20" class="w-full max-w-[90px] h-4 stroke-slate-800" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <line x1="6" y1="10" x2="72" y2="10" stroke-width="1.2" stroke-linecap="round" />
+      <polyline points="62,4 72,10 62,16" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+  </div>`;
+}
+
+/**
  * Converts LaTeX array/tabular and variation tables into crisp, textbook-grade HTML tables
  */
 export function renderLatexTableToHtml(rawTable: string): string {
@@ -98,9 +126,12 @@ export function renderLatexTableToHtml(rawTable: string): string {
   // Calculate max columns
   const maxCols = Math.max(...parsedRows.map(r => r.length));
 
+  // Determine if row 2 (f(x)) has a sub-row for bottom values/arrows
+  const hasSubRowForF = parsedRows.length >= 4 && parsedRows[3] && !parsedRows[3][0];
+
   // Build beautiful, textbook-style HTML table
   let html = `<div class="my-4 overflow-x-auto flex justify-center">
-    <table class="border-collapse border-2 border-slate-700 bg-white text-xs sm:text-sm font-sans shadow-md rounded-2xl overflow-hidden my-2 border-spacing-0">
+    <table class="border-collapse border border-slate-400 bg-white text-xs sm:text-sm font-sans shadow-xs rounded-xl overflow-hidden my-2 border-spacing-0">
       <tbody>`;
 
   parsedRows.forEach((row, rowIdx) => {
@@ -111,27 +142,35 @@ export function renderLatexTableToHtml(rawTable: string): string {
 
     const isFirstRow = rowIdx === 0;
     const isSecondRow = rowIdx === 1;
-    const hasBottomBorder = isFirstRow || isSecondRow || rowIdx === parsedRows.length - 1;
+    const isThirdRow = rowIdx === 2;
+    const isFourthRow = rowIdx === 3;
 
-    html += `<tr class="${hasBottomBorder ? 'border-b-2 border-slate-700' : ''} hover:bg-slate-50/50">`;
+    const hasBottomBorder = isFirstRow || isSecondRow || (hasSubRowForF ? isFourthRow : rowIdx === parsedRows.length - 1);
+
+    html += `<tr class="${hasBottomBorder ? 'border-b border-slate-400' : ''}">`;
 
     row.forEach((cell, colIdx) => {
       const isHeaderCol = colIdx === 0;
       let cellContent = cell.trim();
 
-      // Convert arrows
+      // If this is sub-row 4 and row 3 already spanned column 0, skip header cell
+      if (hasSubRowForF && isFourthRow && isHeaderCol) {
+        return;
+      }
+
+      // Convert arrows to thin, long SVG vector paths
       if (cellContent.includes('\\nearrow') || cellContent === '↗' || cellContent.includes('nearrow')) {
-        cellContent = '<span class="text-indigo-600 font-black text-base sm:text-xl inline-block transform hover:scale-110 transition-transform">↗</span>';
+        cellContent = createSvgArrow('up');
       } else if (cellContent.includes('\\searrow') || cellContent === '↘' || cellContent.includes('searrow')) {
-        cellContent = '<span class="text-indigo-600 font-black text-base sm:text-xl inline-block transform hover:scale-110 transition-transform">↘</span>';
+        cellContent = createSvgArrow('down');
       } else if (cellContent.includes('\\rightarrow') || cellContent === '→' || cellContent.includes('rightarrow')) {
-        cellContent = '<span class="text-indigo-600 font-black text-base sm:text-lg">→</span>';
+        cellContent = createSvgArrow('right');
       } else if (cellContent === '||' || cellContent === '\\|\\|' || cellContent === '|') {
-        cellContent = '<span class="text-slate-400 font-black tracking-tighter text-sm">||</span>';
+        cellContent = '<span class="text-slate-400 font-bold tracking-tighter text-sm">||</span>';
       } else if (cellContent === '+' || cellContent === '$+$') {
-        cellContent = '<span class="text-blue-600 font-black text-sm sm:text-base">+</span>';
+        cellContent = '<span class="text-blue-600 font-bold text-sm sm:text-base">+</span>';
       } else if (cellContent === '-' || cellContent === '$-$' || cellContent === '−') {
-        cellContent = '<span class="text-rose-600 font-black text-sm sm:text-base">−</span>';
+        cellContent = '<span class="text-rose-600 font-bold text-sm sm:text-base">−</span>';
       } else if (cellContent === '0' || cellContent === '$0$') {
         cellContent = '<span class="text-slate-800 font-bold">0</span>';
       } else if (cellContent) {
@@ -150,9 +189,11 @@ export function renderLatexTableToHtml(rawTable: string): string {
       }
 
       if (isHeaderCol) {
-        html += `<td class="border-r-2 border-slate-700 bg-slate-100/90 font-black text-slate-800 px-3 sm:px-4 py-2.5 text-center whitespace-nowrap">${cellContent}</td>`;
+        const rowSpanAttr = hasSubRowForF && isThirdRow ? 'rowspan="2"' : '';
+        html += `<td ${rowSpanAttr} class="border-r border-slate-400 bg-slate-50 font-bold text-slate-800 px-3.5 sm:px-5 py-2.5 text-center whitespace-nowrap align-middle">${cellContent}</td>`;
       } else {
-        html += `<td class="px-2.5 sm:px-4 py-2 text-center text-slate-850 font-medium min-w-[2.4rem] sm:min-w-[3rem]">${cellContent}</td>`;
+        const isArrowCell = cellContent.includes('<svg');
+        html += `<td class="px-2 sm:px-3 py-1.5 text-center text-slate-800 font-medium ${isArrowCell ? 'min-w-[4rem] sm:min-w-[5rem]' : 'min-w-[2.2rem] sm:min-w-[2.8rem]'} align-middle">${cellContent}</td>`;
       }
     });
 
