@@ -16,7 +16,7 @@ import {
   Sparkles,
   Layers
 } from 'lucide-react';
-import { Lesson, User, Attempt, AttemptStatus, QuestionType, Exam } from '../types';
+import { Lesson, User, UserRole, Attempt, AttemptStatus, QuestionType, Exam } from '../types';
 import { storageService } from '../services/storageService';
 import { DocxParsedExam } from '../services/docxParser';
 import { LessonExamUploadModal } from '../components/exam/LessonExamUploadModal';
@@ -40,6 +40,15 @@ export const LessonListView: React.FC<LessonListViewProps> = ({
   const [previewParsedData, setPreviewParsedData] = useState<DocxParsedExam | null>(null);
   const [previewTargetLesson, setPreviewTargetLesson] = useState<Lesson | null>(null);
   const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
+
+  const isTeacherOrAdmin = Boolean(
+    currentUser && (
+      currentUser.role === UserRole.TEACHER ||
+      currentUser.role === UserRole.ADMIN ||
+      String(currentUser.role) === 'TEACHER' ||
+      String(currentUser.role) === 'ADMIN'
+    )
+  );
 
   const [exams, setExams] = useState<Exam[]>(storageService.getExams());
   const lessons = storageService.getLessons().filter(l => !l.isHidden);
@@ -343,7 +352,7 @@ export const LessonListView: React.FC<LessonListViewProps> = ({
                 )}
 
                 {/* Upload & Update Exam Button directly on card - ONLY FOR TEACHER & ADMIN */}
-                {(currentUser.role === UserRole.TEACHER || currentUser.role === UserRole.ADMIN) && (
+                {isTeacherOrAdmin && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
