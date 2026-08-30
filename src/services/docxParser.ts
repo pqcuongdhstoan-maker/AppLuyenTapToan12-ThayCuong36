@@ -319,7 +319,7 @@ export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<Docx
     }
   }
 
-  // Now segment extractedLines into Parts and Questions
+  // Filter and segment extractedLines into Parts and Questions
   const fullText = extractedLines.map(l => l.text).join('\n');
   const questions: Question[] = [];
 
@@ -327,16 +327,45 @@ export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<Docx
   let qNum = 1;
 
   // Split lines and group into questions
-  let currentQuestionDraft: Partial<Question> | null = null;
   let currentQuestionLines: string[] = [];
   let currentImages: string[] = [];
   let currentNeedsCheck = false;
+  let hasStartedFirstQuestion = false;
+
+  const isInstructionOrExamHeader = (text: string): boolean => {
+    const t = text.toLowerCase().trim();
+    return (
+      t.includes('mỗi câu hỏi có bốn phương án') ||
+      t.includes('thí sinh chỉ chọn một phương án') ||
+      t.includes('thí sinh trả lời từ câu') ||
+      t.includes('thí sinh chọn đúng hoặc sai') ||
+      t.includes('trong mỗi ý a), b), c), d)') ||
+      t.includes('trong mỗi ý a, b, c, d') ||
+      t.includes('thí sinh ghi câu trả lời') ||
+      t.includes('thời gian làm bài') ||
+      t.includes('bộ giáo dục và đào tạo') ||
+      t.includes('sở giáo dục và đào tạo') ||
+      t.includes('trường thpt') ||
+      t.includes('đề kiểm tra') ||
+      t.includes('đề thi thử') ||
+      t.includes('môn: toán') ||
+      t.includes('mã đề thi')
+    );
+  };
 
   const saveCurrentDraft = () => {
-    if (!currentQuestionDraft && currentQuestionLines.length === 0) return;
+    if (currentQuestionLines.length === 0) return;
 
     const rawBlock = currentQuestionLines.join('\n').trim();
     if (!rawBlock) return;
+
+    // Do not save if the block is solely instructions or exam header
+    if (isInstructionOrExamHeader(rawBlock)) {
+      currentQuestionLines = [];
+      currentImages = [];
+      currentNeedsCheck = false;
+      return;
+    }
 
     const q = processQuestionBlock(
       rawBlock,
@@ -345,21 +374,24 @@ export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<Docx
       currentImages[0],
       currentNeedsCheck
     );
-    questions.push(q);
-    qNum++;
+
+    if (q && q.content.trim()) {
+      questions.push(q);
+      qNum++;
+    }
 
     // Reset draft
-    currentQuestionDraft = null;
     currentQuestionLines = [];
     currentImages = [];
     currentNeedsCheck = false;
   };
 
   for (const lineObj of extractedLines) {
-    const line = lineObj.text;
+    const line = lineObj.text.trim();
+    if (!line && !lineObj.image) continue;
     const lower = line.toLowerCase();
 
-    // Check for Section headers
+    // Check for Section headers (PHẦN I, PHẦN II, PHẦN III, PHẦN IV)
     if (lower.includes('phần i') || lower.includes('phan i') || lower.includes('phần 1')) {
       saveCurrentDraft();
       currentPart = 1;
@@ -381,11 +413,20 @@ export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<Docx
       continue;
     }
 
-    // Check for "Câu 1", "Câu 2", "Bài 1", "Question 1", etc.
-    const isNewQuestionStart = /^(câu|cau|bài|bai|question)\s*\d+[\.\:\-]/i.test(line);
+    // Check for "Câu 1", "Câu 2", "Bài 1", "Question 1", "[Câu 1]", etc.
+    const isNewQuestionStart = /^(?:\[|\()? *(?:câu|cau|bài|bai|question) *\d+ *[\.\:\-\]\)]/i.test(line);
 
     if (isNewQuestionStart) {
       saveCurrentDraft();
+      hasStartedFirstQuestion = true;
+    } else if (!hasStartedFirstQuestion) {
+      // Skip general instructions / exam cover text before Câu 1
+      continue;
+    }
+
+    // Skip standalone instruction lines inside sections
+    if (isInstructionOrExamHeader(line)) {
+      continue;
     }
 
     currentQuestionLines.push(line);
@@ -421,9 +462,9 @@ function processQuestionBlock(
   const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
   const firstLine = lines[0] || '';
 
-  // Remove "Câu X." from content
+  // Remove "Câu X." or "[Câu X]" from content
   let content = lines.join('\n');
-  content = content.replace(/^(câu|cau|bài|bai)\s*\d+[\.\:\-]\s*/i, '');
+  content = content.replace(/^(?:\[|\()? *(?:câu|cau|bài|bai|question) *\d+ *[\.\:\-\]\)]\s*/i, '').trim();
 
   let options: QuestionOption[] = [];
   let correctOption: string | undefined = undefined;
@@ -438,18 +479,18 @@ function processQuestionBlock(
   }
 
   if (part === 1) {
-    // MCQ: find options A, B, C, D
-    const optRegex = /([A-D])[\.\:\)]\s*([^\n]+)/g;
+    // MCQ: find options A, B, C, D (supports both multiline and inline "A. ... B. ... C. ... D. ...")
+    const optRegex = /(?:^|\s|\t)([A-D])[\.\:\)]\s*([\s\S]*?)(?=(?:\s|\t)[A-D][\.\:\)]|$)/g;
     const matches = Array.from(content.matchAll(optRegex));
 
     if (matches.length >= 2) {
-      options = matches.map(m => ({
+      options = matches.slice(0, 4).map(m => ({
         id: m[1].toUpperCase(),
-        content: m[2].trim()
+        content: m[2].replace(/\n/g, ' ').trim()
       }));
 
       // Strip options from main question content
-      const firstOptIndex = content.search(/[A-D][\.\:\)]/);
+      const firstOptIndex = content.search(/(?:^|\s|\t)[A-D][\.\:\)]/);
       if (firstOptIndex !== -1) {
         content = content.substring(0, firstOptIndex).trim();
       }
@@ -463,10 +504,10 @@ function processQuestionBlock(
       ];
     }
 
-    // Guess correct option from solution or "(Chọn A)"
-    const ansMatch = (solution || block).match(/(chọn|đáp án|chọn đáp án)\s*([A-D])/i);
+    // Guess correct option from solution or "(Chọn A)" or "Đáp án: A"
+    const ansMatch = (solution || block).match(/(?:chọn|đáp án|đáp án đúng|key|đa)[\:\s]*([A-D])\b/i);
     if (ansMatch) {
-      correctOption = ansMatch[2].toUpperCase();
+      correctOption = ansMatch[1].toUpperCase();
     } else {
       correctOption = 'A';
     }
@@ -489,22 +530,28 @@ function processQuestionBlock(
 
   if (part === 2) {
     // True / False: items a), b), c), d)
-    const tfRegex = /([a-d])[\.\:\)]\s*([^\n]+)/g;
+    const tfRegex = /(?:^|\s|\t)([a-d])[\.\:\)]\s*([\s\S]*?)(?=(?:\s|\t)[a-d][\.\:\)]|$)/g;
     const matches = Array.from(content.matchAll(tfRegex));
 
     if (matches.length >= 2) {
-      trueFalseItems = matches.map(m => {
-        const subContent = m[2].trim();
+      trueFalseItems = matches.slice(0, 4).map(m => {
+        const subContent = m[2].replace(/\n/g, ' ').trim();
         // Guess if true or false from text
-        const isFalse = subContent.toLowerCase().includes('(sai)') || subContent.toLowerCase().includes('-> sai');
+        const isFalse = (
+          subContent.toLowerCase().includes('(sai)') ||
+          subContent.toLowerCase().includes('[sai]') ||
+          subContent.toLowerCase().includes('-> sai') ||
+          subContent.toLowerCase().includes('(s)') ||
+          subContent.toLowerCase().includes('[s]')
+        );
         return {
           id: m[1].toLowerCase(),
-          content: subContent.replace(/\((đúng|sai)\)/gi, '').trim(),
+          content: subContent.replace(/[\(\[]\s*(đúng|sai|đ|s)\s*[\)\]]/gi, '').trim(),
           correctAnswer: !isFalse
         };
       });
 
-      const firstTfIndex = content.search(/[a-d][\.\:\)]/);
+      const firstTfIndex = content.search(/(?:^|\s|\t)[a-d][\.\:\)]/);
       if (firstTfIndex !== -1) {
         content = content.substring(0, firstTfIndex).trim();
       }
