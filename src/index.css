@@ -1,15 +1,42 @@
 @import "tailwindcss";
 
 /* KaTeX Typography & Formula Enhancements */
-.katex {
-  font-size: 1.08em;
-  text-rendering: geometricPrecision;
+.katex * {
+  box-sizing: content-box;
 }
 
-/* Enhanced Fraction Bars */
-.katex .frac-line {
-  border-bottom-width: 1.3px !important;
-  border-color: currentColor !important;
+.katex {
+  font-size: 1.1em;
+  text-rendering: geometricPrecision;
+  line-height: 1.2;
+}
+
+/* Fraction bar clean line & spacing */
+.katex .vlist-t {
+  display: inline-table !important;
+  table-layout: fixed !important;
+  border-collapse: collapse !important;
+}
+
+.katex .vlist-r {
+  display: table-row !important;
+}
+
+.katex .vlist {
+  display: table-cell !important;
+  vertical-align: bottom !important;
+  position: relative !important;
+}
+
+.katex .mfrac .frac-line {
+  border-bottom: 0.05em solid currentColor !important;
+  display: block !important;
+  margin: 0.12em 0 !important;
+}
+
+.katex .mfrac > span > span {
+  padding: 0.08em 0.15em !important;
+  text-align: center;
 }
 
 /* KaTeX Display Blocks */
@@ -28,30 +55,6 @@
 .katex-display::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 4px;
-}
-
-/* Bảng Biến Thiên & Array Matrix Styling */
-.katex .arraycolsep {
-  display: inline-block;
-}
-
-.katex .mtable {
-  border-collapse: separate;
-  border-spacing: 0;
-  margin: 0 auto;
-}
-
-.katex .mtable td {
-  padding: 0.35rem 0.55rem !important;
-  vertical-align: middle;
-}
-
-.katex .hline-rule {
-  border-bottom: 1.2px solid #94a3b8 !important;
-}
-
-.katex .vline-rule {
-  border-right: 1.2px solid #94a3b8 !important;
 }
 
 /* Math container readability */
