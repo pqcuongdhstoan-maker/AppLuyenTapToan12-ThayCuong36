@@ -67,30 +67,46 @@ export function preprocessMathContent(rawText: string): string {
   return text;
 }
 
+let arrowIdCounter = 0;
+
 /**
- * Generates delicate, long, razor-thin SVG vector arrows for variation tables
+ * Generates authentic, slender LaTeX stealth vector arrows for variation tables
  */
 function createSvgArrow(type: 'up' | 'down' | 'right'): string {
+  const markerId = `stealth_arr_${++arrowIdCounter}`;
+
   if (type === 'up') {
-    return `<div class="w-full flex items-center justify-center min-w-[4.5rem] sm:min-w-[6rem] py-1">
-      <svg viewBox="0 0 100 36" class="w-full max-w-[110px] h-6 sm:h-7 overflow-visible" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <line x1="4" y1="28" x2="88" y2="8" stroke="#0f172a" stroke-width="0.85" stroke-linecap="round" />
-        <polygon points="94,6 84,6 87,14" fill="#0f172a" stroke="#0f172a" stroke-width="0.5" stroke-linejoin="round" />
+    return `<div class="w-full flex items-center justify-center min-w-[4.5rem] sm:min-w-[6.5rem] py-1 px-1">
+      <svg viewBox="0 0 100 36" class="w-full max-w-[115px] h-6 sm:h-7 overflow-visible">
+        <defs>
+          <marker id="${markerId}" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 2 L 8 5 L 0 8 L 2 5 Z" fill="#0f172a" />
+          </marker>
+        </defs>
+        <line x1="4" y1="28" x2="94" y2="8" stroke="#0f172a" stroke-width="0.9" stroke-linecap="round" marker-end="url(#${markerId})" />
       </svg>
     </div>`;
   }
   if (type === 'down') {
-    return `<div class="w-full flex items-center justify-center min-w-[4.5rem] sm:min-w-[6rem] py-1">
-      <svg viewBox="0 0 100 36" class="w-full max-w-[110px] h-6 sm:h-7 overflow-visible" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <line x1="4" y1="8" x2="88" y2="28" stroke="#0f172a" stroke-width="0.85" stroke-linecap="round" />
-        <polygon points="94,30 87,22 84,30" fill="#0f172a" stroke="#0f172a" stroke-width="0.5" stroke-linejoin="round" />
+    return `<div class="w-full flex items-center justify-center min-w-[4.5rem] sm:min-w-[6.5rem] py-1 px-1">
+      <svg viewBox="0 0 100 36" class="w-full max-w-[115px] h-6 sm:h-7 overflow-visible">
+        <defs>
+          <marker id="${markerId}" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 2 L 8 5 L 0 8 L 2 5 Z" fill="#0f172a" />
+          </marker>
+        </defs>
+        <line x1="4" y1="8" x2="94" y2="28" stroke="#0f172a" stroke-width="0.9" stroke-linecap="round" marker-end="url(#${markerId})" />
       </svg>
     </div>`;
   }
-  return `<div class="w-full flex items-center justify-center min-w-[4.5rem] sm:min-w-[6rem] py-1">
-    <svg viewBox="0 0 100 20" class="w-full max-w-[110px] h-4 overflow-visible" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <line x1="4" y1="10" x2="88" y2="10" stroke="#0f172a" stroke-width="0.85" stroke-linecap="round" />
-      <polygon points="94,10 85,5 85,15" fill="#0f172a" stroke="#0f172a" stroke-width="0.5" stroke-linejoin="round" />
+  return `<div class="w-full flex items-center justify-center min-w-[4.5rem] sm:min-w-[6.5rem] py-1 px-1">
+    <svg viewBox="0 0 100 20" class="w-full max-w-[115px] h-4 overflow-visible">
+      <defs>
+        <marker id="${markerId}" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 2 L 8 5 L 0 8 L 2 5 Z" fill="#0f172a" />
+        </marker>
+      </defs>
+      <line x1="4" y1="10" x2="94" y2="10" stroke="#0f172a" stroke-width="0.9" stroke-linecap="round" marker-end="url(#${markerId})" />
     </svg>
   </div>`;
 }
