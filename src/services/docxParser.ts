@@ -131,12 +131,49 @@ export function convertOmmlToLatex(ommlNode: Element): { latex: string; confiden
         return `\\begin{matrix} ${rowLatex} \\end{matrix}`;
       }
 
+      // Functions: <m:func> -> \fname{e} (sin, cos, tan, cot, ln, log, etc.)
+      if (tagName === 'func') {
+        const fNameNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('fName'));
+        const eNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('e'));
+        const fName = fNameNode ? Array.from(fNameNode.children).map(c => parseNode(c as Element)).join('').trim() : '';
+        const e = eNode ? Array.from(eNode.children).map(c => parseNode(c as Element)).join('') : '';
+        
+        const lowerFName = fName.toLowerCase();
+        if (['sin', 'cos', 'tan', 'cot', 'ln', 'log', 'exp', 'arcsin', 'arccos', 'arctan', 'min', 'max', 'det'].includes(lowerFName)) {
+          return `\\${lowerFName}{${e}}`;
+        }
+        return `${fName}(${e})`;
+      }
+
+      // Group character / Overbrace / Underbrace: <m:groupChr>
+      if (tagName === 'groupChr') {
+        const eNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('e'));
+        const chr = node.getAttribute('m:chr') || '';
+        const pos = node.getAttribute('m:pos') || 'top';
+        const e = eNode ? Array.from(eNode.children).map(c => parseNode(c as Element)).join('') : '';
+        if (chr === '⏟' || pos === 'bot') return `\\underbrace{${e}}`;
+        if (chr === '⏞' || pos === 'top') return `\\overbrace{${e}}`;
+        return e;
+      }
+
+      // Box / BorderBox: <m:box>, <m:borderBox>
+      if (tagName === 'box' || tagName === 'borderBox') {
+        const eNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('e'));
+        const e = eNode ? Array.from(eNode.children).map(c => parseNode(c as Element)).join('') : '';
+        return e;
+      }
+
       // Text node <m:t> or <w:t>
       if (tagName === 't') {
         let txt = node.textContent || '';
         // Replace common math unicode symbols with LaTeX
         txt = txt
-          .replace(/∞/g, '+\\infty ')
+          .replace(/ℝ/g, '\\mathbb{R} ')
+          .replace(/ℤ/g, '\\mathbb{Z} ')
+          .replace(/ℕ/g, '\\mathbb{N} ')
+          .replace(/ℚ/g, '\\mathbb{Q} ')
+          .replace(/ℂ/g, '\\mathbb{C} ')
+          .replace(/∞/g, '\\infty ')
           .replace(/±/g, '\\pm ')
           .replace(/≤/g, '\\le ')
           .replace(/≥/g, '\\ge ')
@@ -144,18 +181,32 @@ export function convertOmmlToLatex(ommlNode: Element): { latex: string; confiden
           .replace(/∈/g, '\\in ')
           .replace(/∉/g, '\\notin ')
           .replace(/⊂/g, '\\subset ')
+          .replace(/⊃/g, '\\supset ')
           .replace(/∪/g, '\\cup ')
           .replace(/∩/g, '\\cap ')
           .replace(/∅/g, '\\emptyset ')
-          .replace(/Δ/g, '\\Delta ')
+          .replace(/Δ|∆/g, '\\Delta ')
           .replace(/π/g, '\\pi ')
           .replace(/α/g, '\\alpha ')
           .replace(/β/g, '\\beta ')
+          .replace(/γ/g, '\\gamma ')
           .replace(/θ/g, '\\theta ')
           .replace(/λ/g, '\\lambda ')
+          .replace(/ω/g, '\\omega ')
+          .replace(/φ/g, '\\varphi ')
           .replace(/→/g, '\\to ')
           .replace(/⇒/g, '\\Rightarrow ')
-          .replace(/⇔/g, '\\Leftrightarrow ');
+          .replace(/⇔/g, '\\Leftrightarrow ')
+          .replace(/·/g, '\\cdot ')
+          .replace(/×/g, '\\times ')
+          .replace(/÷/g, '\\div ')
+          .replace(/≈/g, '\\approx ')
+          .replace(/≡/g, '\\equiv ')
+          .replace(/∠/g, '\\angle ')
+          .replace(/°/g, '^\\circ ')
+          .replace(/′/g, '\'')
+          .replace(/″/g, '\'\'')
+          .replace(/…|⋯/g, '\\dots ');
         return txt;
       }
 

@@ -72,12 +72,23 @@ export const LessonExamUploadModal: React.FC<LessonExamUploadModalProps> = ({
       return;
     }
 
+    if (file.size > 50 * 1024 * 1024) {
+      setWordError('Kích thước tệp vượt quá 50MB. Vui lòng tối ưu hóa hình ảnh hoặc kiểm tra lại file.');
+      return;
+    }
+
     setIsProcessingWord(true);
     setWordError(null);
 
     try {
       const parsed = await parseDocxFile(file);
       setIsProcessingWord(false);
+
+      if (!parsed.questions || parsed.questions.length === 0) {
+        setWordError('Không tìm thấy câu hỏi nào trong tệp Word. Hãy đảm bảo đề thi bắt đầu bằng "Câu 1.", "Câu 2." hoặc tải File mẫu bên dưới.');
+        return;
+      }
+
       onPreviewParsed(parsed, lesson);
     } catch (e: any) {
       console.error('Parse Word error:', e);

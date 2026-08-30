@@ -6,12 +6,15 @@ import {
   Sparkles,
   Edit3,
   Save,
+  Trash2,
   Layers,
   ArrowRight,
-  HelpCircle
+  HelpCircle,
+  Plus,
+  Image as ImageIcon
 } from 'lucide-react';
 import { DocxParsedExam } from '../../services/docxParser';
-import { Lesson, Exam, Question, QuestionType } from '../../types';
+import { Lesson, Exam, Question, QuestionType, QuestionOption, TrueFalseItem } from '../../types';
 import { storageService } from '../../services/storageService';
 import { MathRenderer } from '../../components/math/MathRenderer';
 import { MathEditor } from '../../components/math/MathEditor';
@@ -35,6 +38,11 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState('');
   const [editingSolution, setEditingSolution] = useState('');
+  const [editingOptions, setEditingOptions] = useState<QuestionOption[]>([]);
+  const [editingCorrectOption, setEditingCorrectOption] = useState<string>('A');
+  const [editingTrueFalseItems, setEditingTrueFalseItems] = useState<TrueFalseItem[]>([]);
+  const [editingShortAnswer, setEditingShortAnswer] = useState<string>('');
+  const [editingImageUrl, setEditingImageUrl] = useState<string>('');
   const [timeLimit, setTimeLimit] = useState(45);
 
   if (!isOpen || !parsedData) return null;
@@ -43,6 +51,21 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
     setEditingQuestionId(q.id);
     setEditingContent(q.content);
     setEditingSolution(q.solution || '');
+    setEditingOptions(q.options || [
+      { id: 'A', content: '' },
+      { id: 'B', content: '' },
+      { id: 'C', content: '' },
+      { id: 'D', content: '' }
+    ]);
+    setEditingCorrectOption(typeof q.correctOption === 'string' ? q.correctOption : 'A');
+    setEditingTrueFalseItems(q.trueFalseItems || [
+      { id: 'a', content: '', correctAnswer: true },
+      { id: 'b', content: '', correctAnswer: false },
+      { id: 'c', content: '', correctAnswer: true },
+      { id: 'd', content: '', correctAnswer: false }
+    ]);
+    setEditingShortAnswer(q.shortAnswerConfig?.correctAnswers?.[0] || '');
+    setEditingImageUrl(q.imageUrl || '');
   };
 
   const handleSaveEdit = (qId: string) => {
@@ -51,13 +74,30 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
         return {
           ...q,
           content: editingContent,
-          solution: editingSolution
+          solution: editingSolution,
+          options: q.part === 1 ? editingOptions : q.options,
+          correctOption: q.part === 1 ? editingCorrectOption : q.correctOption,
+          trueFalseItems: q.part === 2 ? editingTrueFalseItems : q.trueFalseItems,
+          shortAnswerConfig: q.part === 3 ? { correctAnswers: [editingShortAnswer.trim()] } : q.shortAnswerConfig,
+          imageUrl: editingImageUrl || undefined
         };
       }
       return q;
     });
     setQuestions(updated);
     setEditingQuestionId(null);
+  };
+
+  const handleDeleteQuestion = (qId: string) => {
+    if (window.confirm('Thầy/Cô có chắc chắn muốn xóa câu hỏi này khỏi đề thi?')) {
+      const remaining = questions.filter(q => q.id !== qId);
+      // Re-index question numbers
+      const reindexed = remaining.map((q, idx) => ({ ...q, questionNumber: idx + 1 }));
+      setQuestions(reindexed);
+      if (editingQuestionId === qId) {
+        setEditingQuestionId(null);
+      }
+    }
   };
 
   const handlePublish = () => {
@@ -183,28 +223,52 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
                   </div>
 
                   {!isEditing ? (
-                    <button
-                      onClick={() => handleStartEdit(q)}
-                      className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors flex items-center gap-1"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                      Sửa câu hỏi
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleStartEdit(q)}
+                        className="px-3 py-1 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 text-xs font-bold rounded-lg transition-colors flex items-center gap-1"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-indigo-600" />
+                        Sửa câu hỏi
+                      </button>
+                      <button
+                        onClick={() => handleDeleteQuestion(q.id)}
+                        className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors"
+                        title="Xóa câu hỏi này"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   ) : (
-                    <button
-                      onClick={() => handleSaveEdit(q.id)}
-                      className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1"
-                    >
-                      <Save className="w-3.5 h-3.5" />
-                      Lưu sửa đổi
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleSaveEdit(q.id)}
+                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 shadow-xs"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        Lưu sửa đổi
+                      </button>
+                      <button
+                        onClick={() => setEditingQuestionId(null)}
+                        className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg transition-colors"
+                      >
+                        Hủy
+                      </button>
+                      <button
+                        onClick={() => handleDeleteQuestion(q.id)}
+                        className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors"
+                        title="Xóa câu hỏi này"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   )}
                 </div>
 
                 {isEditing ? (
-                  <div className="space-y-3 pt-2">
+                  <div className="space-y-4 pt-2 border-t border-slate-100">
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Nội dung câu hỏi (LaTeX):</label>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Nội dung câu hỏi (hỗ trợ MathType / LaTeX $...$):</label>
                       <MathEditor
                         value={editingContent}
                         onChange={setEditingContent}
@@ -212,8 +276,132 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
                         rows={3}
                       />
                     </div>
+
+                    {/* Image URL / preview */}
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Lời giải chi tiết (LaTeX):</label>
+                      <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                        <ImageIcon className="w-3.5 h-3.5 text-blue-600" />
+                        Hình ảnh đính kèm (URL hoặc Base64):
+                      </label>
+                      <input
+                        type="text"
+                        value={editingImageUrl}
+                        onChange={(e) => setEditingImageUrl(e.target.value)}
+                        placeholder="data:image/png;base64,... hoặc https://..."
+                        className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-indigo-500 focus:outline-none"
+                      />
+                      {editingImageUrl && (
+                        <div className="mt-2 p-2 bg-slate-50 border border-slate-200 rounded-xl flex justify-center">
+                          <img src={editingImageUrl} alt="Preview" className="max-h-32 object-contain rounded-lg" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Part I: Edit 4 Options & Correct Answer Radio */}
+                    {q.part === 1 && (
+                      <div className="space-y-2 pt-1">
+                        <label className="block text-xs font-bold text-slate-700">
+                          Các phương án A, B, C, D (Nhấp nút tròn để chọn đáp án đúng):
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {editingOptions.map((opt, optIdx) => (
+                            <div
+                              key={opt.id}
+                              className={`p-2.5 rounded-xl border flex items-center gap-2 transition-all ${
+                                editingCorrectOption === opt.id
+                                  ? 'bg-emerald-50/80 border-emerald-400 shadow-2xs'
+                                  : 'bg-slate-50 border-slate-200'
+                              }`}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => setEditingCorrectOption(opt.id)}
+                                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black shrink-0 cursor-pointer transition-all ${
+                                  editingCorrectOption === opt.id
+                                    ? 'bg-emerald-600 text-white shadow-xs'
+                                    : 'bg-slate-200 text-slate-700 hover:bg-emerald-200'
+                                }`}
+                                title={`Chọn ${opt.id} là đáp án đúng`}
+                              >
+                                {opt.id}
+                              </button>
+                              <input
+                                type="text"
+                                value={opt.content}
+                                onChange={(e) => {
+                                  const updated = [...editingOptions];
+                                  updated[optIdx] = { ...opt, content: e.target.value };
+                                  setEditingOptions(updated);
+                                }}
+                                placeholder={`Nội dung phương án ${opt.id}...`}
+                                className="w-full px-2.5 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:border-indigo-500 focus:outline-none font-medium"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Part II: Edit True/False Items */}
+                    {q.part === 2 && (
+                      <div className="space-y-2 pt-1">
+                        <label className="block text-xs font-bold text-slate-700">
+                          Các mệnh đề a, b, c, d (Bấm nút ĐÚNG/SAI để chuyển trạng thái):
+                        </label>
+                        <div className="space-y-2">
+                          {editingTrueFalseItems.map((tf, tfIdx) => (
+                            <div key={tf.id} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-2">
+                              <span className="font-black text-xs uppercase text-slate-800 w-5 text-center shrink-0">
+                                {tf.id})
+                              </span>
+                              <input
+                                type="text"
+                                value={tf.content}
+                                onChange={(e) => {
+                                  const updated = [...editingTrueFalseItems];
+                                  updated[tfIdx] = { ...tf, content: e.target.value };
+                                  setEditingTrueFalseItems(updated);
+                                }}
+                                placeholder={`Mệnh đề ${tf.id}...`}
+                                className="flex-1 px-2.5 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:border-indigo-500 focus:outline-none"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = [...editingTrueFalseItems];
+                                  updated[tfIdx] = { ...tf, correctAnswer: !tf.correctAnswer };
+                                  setEditingTrueFalseItems(updated);
+                                }}
+                                className={`px-3 py-1 rounded-lg text-xs font-black cursor-pointer transition-all ${
+                                  tf.correctAnswer
+                                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs'
+                                    : 'bg-rose-600 hover:bg-rose-700 text-white shadow-2xs'
+                                }`}
+                              >
+                                {tf.correctAnswer ? 'ĐÚNG' : 'SAI'}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Part III: Edit Short Answer */}
+                    {q.part === 3 && (
+                      <div className="space-y-1 pt-1">
+                        <label className="block text-xs font-bold text-slate-700">Đáp án số chính xác:</label>
+                        <input
+                          type="text"
+                          value={editingShortAnswer}
+                          onChange={(e) => setEditingShortAnswer(e.target.value)}
+                          placeholder="Ví dụ: 3, 19/3, 2.5..."
+                          className="w-full sm:w-64 px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-xl font-bold text-indigo-700 focus:border-indigo-500 focus:outline-none"
+                        />
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Lời giải chi tiết / Hướng dẫn chấm (LaTeX):</label>
                       <MathEditor
                         value={editingSolution}
                         onChange={setEditingSolution}
@@ -227,6 +415,12 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
                     <div className="text-sm text-slate-900 leading-relaxed font-medium">
                       <MathRenderer content={q.content} />
                     </div>
+
+                    {q.imageUrl && (
+                      <div className="my-2 flex justify-center">
+                        <img src={q.imageUrl} alt="Hình minh họa" className="max-h-56 object-contain rounded-xl border border-slate-200 p-1 bg-white shadow-2xs" />
+                      </div>
+                    )}
 
                     {/* Part I Options */}
                     {q.part === 1 && q.options && (
