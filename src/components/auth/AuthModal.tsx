@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   User,
   UserRole
@@ -308,7 +308,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       {u.fullName.split(' ').pop()}
                     </div>
                     <div className="text-[10px] text-slate-400 truncate">
-                      {u.role === UserRole.ADMIN ? 'Admin BGH' : u.role === UserRole.TEACHER ? 'Giáo viên' : `HS ${u.className || '12'}`}
+                      {u.role === UserRole.ADMIN ? 'Quản trị viên' : u.role === UserRole.TEACHER ? 'Giáo viên' : `HS ${u.className || '12'}`}
                     </div>
                   </button>
                 ))}

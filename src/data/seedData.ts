@@ -38,10 +38,10 @@ export const INITIAL_CLASSES: ClassInfo[] = [
 export const INITIAL_USERS: User[] = [
   {
     id: 'user_admin',
-    email: 'admin@duchoa.edu.vn',
+    email: 'admin.cuong@duchoa.edu.vn',
     username: 'admin',
     password: '123',
-    fullName: 'Ban Giám Hiệu / Quản Trị',
+    fullName: 'Phan Quốc Cường (Quản trị viên)',
     role: UserRole.ADMIN,
     status: 'active',
     createdAt: '2026-08-01T00:00:00.000Z'
@@ -51,7 +51,7 @@ export const INITIAL_USERS: User[] = [
     email: 'cuong.pq@duchoa.edu.vn',
     username: 'gvcuong',
     password: '123',
-    fullName: 'Phan Quốc Cường',
+    fullName: 'Phan Quốc Cường (Giáo viên)',
     role: UserRole.TEACHER,
     status: 'active',
     createdAt: '2026-08-01T00:00:00.000Z'

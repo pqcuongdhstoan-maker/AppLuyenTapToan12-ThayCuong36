@@ -342,18 +342,20 @@ export const LessonListView: React.FC<LessonListViewProps> = ({
                   </button>
                 )}
 
-                {/* Upload & Update Exam Button directly on card */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setUploadModalLesson(lesson);
-                  }}
-                  title="Upload đề thi (Word .docx, JSON hoặc Tạo bằng AI) cho bài học này"
-                  className="py-2 px-3 rounded-xl bg-white hover:bg-indigo-50 text-indigo-700 hover:text-indigo-800 border border-slate-200 hover:border-indigo-300 font-bold text-xs shadow-2xs transition-all flex items-center justify-center gap-1.5 shrink-0"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Nạp đề</span>
-                </button>
+                {/* Upload & Update Exam Button directly on card - ONLY FOR TEACHER & ADMIN */}
+                {(currentUser.role === UserRole.TEACHER || currentUser.role === UserRole.ADMIN) && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setUploadModalLesson(lesson);
+                    }}
+                    title="Upload đề thi mới (Word .docx, JSON hoặc Tạo bằng AI) - Không giới hạn số lượng đề"
+                    className="py-2 px-3 rounded-xl bg-white hover:bg-indigo-50 text-indigo-700 hover:text-indigo-800 border border-slate-200 hover:border-indigo-300 font-bold text-xs shadow-2xs transition-all flex items-center justify-center gap-1.5 shrink-0"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Nạp đề</span>
+                  </button>
+                )}
               </div>
             </div>
           );

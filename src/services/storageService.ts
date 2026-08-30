@@ -50,10 +50,38 @@ class StorageService {
 
     if (!localStorage.getItem(KEYS.USERS)) {
       localStorage.setItem(KEYS.USERS, JSON.stringify(INITIAL_USERS));
+    } else {
+      // Migrate old admin name if present
+      try {
+        const rawUsers = JSON.parse(localStorage.getItem(KEYS.USERS) || '[]');
+        const updated = rawUsers.map((u: any) => {
+          if (u.id === 'user_admin' && (u.fullName?.includes('Ban Giám Hiệu') || !u.fullName?.includes('Phan Quốc Cường'))) {
+            return {
+              ...u,
+              fullName: 'Phan Quốc Cường (Quản trị viên)',
+              email: 'cuong.pq@duchoa.edu.vn',
+              username: 'admin',
+              password: u.password || '123'
+            };
+          }
+          return u;
+        });
+        localStorage.setItem(KEYS.USERS, JSON.stringify(updated));
+      } catch {}
     }
     if (!localStorage.getItem(KEYS.CURRENT_USER)) {
       // Default to student Nguyễn Văn An or Teacher Phan Quốc Cường
       localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(INITIAL_USERS[2]));
+    } else {
+      // Migrate current user if was old admin
+      try {
+        const curr = JSON.parse(localStorage.getItem(KEYS.CURRENT_USER) || '{}');
+        if (curr.id === 'user_admin' && curr.fullName?.includes('Ban Giám Hiệu')) {
+          curr.fullName = 'Phan Quốc Cường (Quản trị viên)';
+          curr.email = 'cuong.pq@duchoa.edu.vn';
+          localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(curr));
+        }
+      } catch {}
     }
     if (!localStorage.getItem(KEYS.CLASSES)) {
       localStorage.setItem(KEYS.CLASSES, JSON.stringify(INITIAL_CLASSES));
