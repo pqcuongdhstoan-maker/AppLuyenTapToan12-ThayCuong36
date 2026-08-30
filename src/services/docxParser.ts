@@ -237,6 +237,25 @@ export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<Docx
         }
       }
     }
+
+    // Also index all files in word/embeddings folder directly
+    const embeddingsFolder = zip.folder('word/embeddings');
+    if (embeddingsFolder) {
+      const files = embeddingsFolder.file(/.*/);
+      let oleIndex = 1;
+      for (const f of files) {
+        try {
+          const buf = await f.async('arraybuffer');
+          const latex = decodeMtefToLatex(buf);
+          if (latex) {
+            const fname = f.name.split('/').pop() || '';
+            oleMap[fname] = latex;
+            oleMap[`ole_${oleIndex}`] = latex;
+            oleIndex++;
+          }
+        } catch {}
+      }
+    }
   } catch (e) {
     console.warn('Could not extract relationships / OLE objects from docx:', e);
   }
@@ -267,14 +286,22 @@ export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<Docx
       const oleNodes = el.getElementsByTagName('o:OLEObject');
       let foundMath = false;
       for (let o = 0; o < oleNodes.length; o++) {
-        const rId = oleNodes[o].getAttribute('r:id');
-        if (rId && oleMap[rId]) {
-          pText += ` $${oleMap[rId]}$ `;
+        const rId = oleNodes[o].getAttribute('r:id') || '';
+        const shapeId = oleNodes[o].getAttribute('ShapeID') || '';
+        
+        let latex = oleMap[rId];
+        if (!latex) {
+          const matchingKey = Object.keys(oleMap).find(k => (rId && k.includes(rId)) || (shapeId && k.includes(shapeId)));
+          if (matchingKey) latex = oleMap[matchingKey];
+        }
+
+        if (latex) {
+          pText += ` $${latex}$ `;
           foundMath = true;
         }
       }
 
-      // Check for image representation in shape
+      // Check for image representation in shape if math wasn't decoded as text
       const vImgs = el.getElementsByTagName('v:imagedata');
       for (let v = 0; v < vImgs.length; v++) {
         const imgId = vImgs[v].getAttribute('r:id') || vImgs[v].getAttribute('r:href');

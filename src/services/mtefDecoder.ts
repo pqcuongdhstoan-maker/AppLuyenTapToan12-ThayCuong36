@@ -255,14 +255,31 @@ export class MtefDecoder {
   }
 
   private findMtefHeader(): void {
-    // In OLE DocFile or raw MTEF, search for signature
+    // 1. Search for Equation Native / MTEF signature in CFBF or raw MTEF
+    for (let i = 0; i < this.bytes.length - 8; i++) {
+      const b0 = this.bytes[i];
+      const b1 = this.bytes[i + 1];
+      const b2 = this.bytes[i + 2];
+      const b3 = this.bytes[i + 3];
+      const b4 = this.bytes[i + 4];
+      const b5 = this.bytes[i + 5];
+
+      // MTEF v5 / v3 / v2 header: [0x05, 0x01, 0x01, ...] or [0x03, 0x01, 0x01, ...] or [0x02, ...]
+      if ((b0 === 5 || b0 === 3 || b0 === 2 || b0 === 1) && (b1 === 1 || b1 === 0) && (b2 === 1 || b2 === 0)) {
+        if (b5 !== undefined && (b5 <= 20 || (b5 & 0x0F) <= 20)) {
+          this.pos = i;
+          return;
+        }
+      }
+    }
+
+    // 2. Direct fallback search for MTEF signature bytes
     for (let i = 0; i < this.bytes.length - 5; i++) {
-      // MTEF v5 header starts with (5, 1, 1, ...) or (3, 1, 1, ...) or (5, 0, 1, ...)
       const b0 = this.bytes[i];
       const b1 = this.bytes[i + 1];
       const b2 = this.bytes[i + 2];
 
-      if ((b0 === 5 || b0 === 3 || b0 === 2 || b0 === 1) && (b1 === 0 || b1 === 1) && (b2 === 0 || b2 === 1)) {
+      if ((b0 === 5 || b0 === 3 || b0 === 2) && (b1 === 1 || b1 === 0)) {
         this.pos = i;
         return;
       }
