@@ -21,13 +21,13 @@ export function convertOmmlToLatex(ommlNode: Element): { latex: string; confiden
     function parseNode(node: Element): string {
       const tagName = node.localName || node.nodeName.replace(/^.*:/, '');
 
-      // Fractions: <m:f> -> \frac{num}{den}
+      // Fractions: <m:f> -> \dfrac{num}{den}
       if (tagName === 'f') {
         const numNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('num'));
         const denNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('den'));
         const num = numNode ? Array.from(numNode.children).map(c => parseNode(c as Element)).join('') : '';
         const den = denNode ? Array.from(denNode.children).map(c => parseNode(c as Element)).join('') : '';
-        return `\\frac{${num || '1'}}{${den || '1'}}`;
+        return `\\dfrac{${num || '1'}}{${den || '1'}}`;
       }
 
       // Radicals (square root / nth root): <m:rad> -> \sqrt[deg]{e}
