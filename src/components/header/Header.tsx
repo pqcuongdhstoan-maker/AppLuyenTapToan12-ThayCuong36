@@ -32,6 +32,7 @@ import { AccountProvisioningModal } from '../auth/AccountProvisioningModal';
 interface HeaderProps {
   currentUser: User;
   onUserChange: (user: User) => void;
+  onLogout?: () => void;
   activeView: string;
   onNavigate: (view: string) => void;
 }
@@ -39,6 +40,7 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   currentUser,
   onUserChange,
+  onLogout,
   activeView,
   onNavigate
 }) => {
@@ -407,13 +409,13 @@ export const Header: React.FC<HeaderProps> = ({
                     <div className="border-t border-slate-100 pt-1.5 mt-1">
                       <button
                         onClick={() => {
-                          // Switch to default student or reset
-                          const defaultStudent = storageService.getUsers().find(u => u.role === UserRole.STUDENT) || currentUser;
-                          storageService.setCurrentUser(defaultStudent);
-                          onUserChange(defaultStudent);
+                          storageService.logout();
+                          if (onLogout) {
+                            onLogout();
+                          }
                           setShowProfileMenu(false);
                         }}
-                        className="w-full text-left px-4 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2.5 transition-colors"
+                        className="w-full text-left px-4 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2.5 transition-colors cursor-pointer"
                       >
                         <LogOut className="w-3.5 h-3.5" />
                         Đăng xuất

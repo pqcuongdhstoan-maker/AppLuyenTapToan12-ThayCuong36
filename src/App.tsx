@@ -16,10 +16,11 @@ import { AdminDashboardView } from './views/admin/AdminDashboardView';
 import { SpeedMathBattleView } from './views/game/SpeedMathBattleView';
 import { FormulaFlashcardsView } from './views/flashcards/FormulaFlashcardsView';
 import { InteractiveGrapher } from './components/math/InteractiveGrapher';
+import { LandingLoginView } from './views/LandingLoginView';
 import { School, Heart, Sparkles } from 'lucide-react';
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<User>(storageService.getCurrentUser());
+  const [currentUser, setCurrentUser] = useState<User | null>(() => storageService.getCurrentUser());
   const [activeView, setActiveView] = useState<string>('lessons');
   const [selectedLessonForExam, setSelectedLessonForExam] = useState<Lesson | null>(null);
   const [resumeAttemptId, setResumeAttemptId] = useState<string | undefined>(undefined);
@@ -31,6 +32,11 @@ export default function App() {
   useEffect(() => {
     setCurrentUser(storageService.getCurrentUser());
   }, []);
+
+  // If no user is logged in, show the cute Landing Login Portal
+  if (!currentUser) {
+    return <LandingLoginView onLoginSuccess={(u) => setCurrentUser(u)} />;
+  }
 
   const progress = storageService.getStudentProgress(currentUser.id);
 
@@ -82,6 +88,7 @@ export default function App() {
         <Header
           currentUser={currentUser}
           onUserChange={(u) => setCurrentUser(u)}
+          onLogout={() => setCurrentUser(null)}
           activeView={activeView}
           onNavigate={(view) => {
             setActiveView(view);

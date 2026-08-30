@@ -174,7 +174,7 @@ class StorageService {
   }
 
   // --- Current User Auth & Account Management ---
-  getCurrentUser(): User {
+  getCurrentUser(): User | null {
     this.init();
     try {
       const raw = localStorage.getItem(KEYS.CURRENT_USER);
@@ -182,7 +182,12 @@ class StorageService {
     } catch (e) {
       console.error(e);
     }
-    return INITIAL_USERS[2]; // Default to Student Nguyễn Văn An
+    return null;
+  }
+
+  logout(): void {
+    localStorage.removeItem(KEYS.CURRENT_USER);
+    this.logAudit('USER_LOGOUT', 'Người dùng đã đăng xuất');
   }
 
   setCurrentUser(user: User): void {
@@ -224,7 +229,7 @@ class StorageService {
     localStorage.setItem(KEYS.USERS, JSON.stringify(users));
 
     const curr = this.getCurrentUser();
-    if (curr.id === user.id) {
+    if (curr && curr.id === user.id) {
       this.setCurrentUser(user);
     }
   }
@@ -356,7 +361,7 @@ class StorageService {
     localStorage.setItem(KEYS.USERS, JSON.stringify(users));
 
     const curr = this.getCurrentUser();
-    if (curr.id === userId) {
+    if (curr && curr.id === userId) {
       curr.password = newPassword;
       localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(curr));
     }
