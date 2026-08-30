@@ -59,8 +59,11 @@ export function preprocessMathContent(rawText: string): string {
     .replace(/([a-zA-Z])₂/g, '$1_2')
     .replace(/([a-zA-Z])₃/g, '$1_3');
 
-  // 7. Auto-detect isolated LaTeX commands missing $ delimiters
-  text = text.replace(/(?<!\$)(?:\\frac\{[^{}]+\}\{[^{}]+\}|\\sqrt(?:\[[^\]]+\])?\{[^{}]+\}|\\int_[^{}]+\^[^{}]+\s*\{[^{}]+\}|\\lim_\{[^{}]+\}\s*\{?[^{}]*\}?|\\vec\{[^{}]+\})(?!\$)/g, (match) => {
+  // 7. Upgrade all \frac to \dfrac (display fraction) for balanced spacing and exponent scaling
+  text = text.replace(/\\frac(?=\{)/g, '\\dfrac');
+
+  // 8. Auto-detect isolated LaTeX commands missing $ delimiters
+  text = text.replace(/(?<!\$)(?:\\dfrac\{[^{}]+\}\{[^{}]+\}|\\sqrt(?:\[[^\]]+\])?\{[^{}]+\}|\\int_[^{}]+\^[^{}]+\s*\{[^{}]+\}|\\lim_\{[^{}]+\}\s*\{?[^{}]*\}?|\\vec\{[^{}]+\})(?!\$)/g, (match) => {
     return `$${match}$`;
   });
 

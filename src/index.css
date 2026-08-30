@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "katex/dist/katex.min.css";
 
 /* KaTeX Typography & Formula Enhancements */
 .katex * {
@@ -6,45 +7,25 @@
 }
 
 .katex {
-  font-size: 1.1em;
+  font-size: 1.12em;
   text-rendering: geometricPrecision;
-  line-height: 1.2;
 }
 
-/* Fraction bar clean line & spacing */
-.katex .vlist-t {
-  display: inline-table !important;
-  table-layout: fixed !important;
-  border-collapse: collapse !important;
+.katex-html {
+  overflow: visible;
 }
 
-.katex .vlist-r {
-  display: table-row !important;
-}
-
-.katex .vlist {
-  display: table-cell !important;
-  vertical-align: bottom !important;
-  position: relative !important;
-}
-
-.katex .mfrac .frac-line {
-  border-bottom: 0.05em solid currentColor !important;
-  display: block !important;
-  margin: 0.12em 0 !important;
-}
-
-.katex .mfrac > span > span {
-  padding: 0.08em 0.15em !important;
-  text-align: center;
+/* Align inline formulas with running text */
+.math-content .katex {
+  vertical-align: -0.1em;
 }
 
 /* KaTeX Display Blocks */
 .katex-display {
-  margin: 0.75em 0 !important;
+  margin: 0.85em 0 !important;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 0.25rem 0;
+  padding: 0.35rem 0;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -59,7 +40,7 @@
 
 /* Math container readability */
 .math-content {
-  line-height: 1.8;
+  line-height: 2.2;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
