@@ -207,7 +207,12 @@ export default function App() {
         <footer className="bg-white border-t border-slate-200 mt-auto py-8 text-center text-xs text-slate-500">
           <div className="max-w-7xl mx-auto px-4 space-y-2">
             <div className="flex items-center justify-center gap-2 font-bold text-slate-800">
-              <School className="w-4 h-4 text-indigo-600" />
+              <img
+                src="/logo_thpt_duchoa.png"
+                alt="Logo THPT Đức Hòa"
+                className="w-5 h-5 object-contain inline-block"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
               <span>TRƯỜNG THPT ĐỨC HÒA • LUYỆN TẬP TOÁN 12 - KNTT</span>
             </div>
             <p className="text-[11px] text-slate-400">

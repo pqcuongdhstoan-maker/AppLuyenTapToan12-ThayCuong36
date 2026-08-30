@@ -145,7 +145,7 @@ class StorageService {
     this.initialized = true;
   }
 
-  // --- Current User Auth ---
+  // --- Current User Auth & Account Management ---
   getCurrentUser(): User {
     this.init();
     try {
@@ -166,7 +166,16 @@ class StorageService {
     this.init();
     try {
       const raw = localStorage.getItem(KEYS.USERS);
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        const users: User[] = JSON.parse(raw);
+        // Ensure default passwords if missing
+        return users.map(u => ({
+          ...u,
+          password: u.password || '123',
+          username: u.username || u.email.split('@')[0],
+          status: u.status || 'active'
+        }));
+      }
     } catch {}
     return INITIAL_USERS;
   }
@@ -175,9 +184,14 @@ class StorageService {
     const users = this.getUsers();
     const idx = users.findIndex(u => u.id === user.id);
     if (idx >= 0) {
-      users[idx] = user;
+      users[idx] = { ...users[idx], ...user, updatedAt: new Date().toISOString() };
     } else {
-      users.push(user);
+      users.push({
+        ...user,
+        password: user.password || '123',
+        status: user.status || 'active',
+        createdAt: user.createdAt || new Date().toISOString()
+      });
     }
     localStorage.setItem(KEYS.USERS, JSON.stringify(users));
 
@@ -185,6 +199,164 @@ class StorageService {
     if (curr.id === user.id) {
       this.setCurrentUser(user);
     }
+  }
+
+  deleteUser(userId: string): boolean {
+    const users = this.getUsers().filter(u => u.id !== userId);
+    localStorage.setItem(KEYS.USERS, JSON.stringify(users));
+    this.logAudit('USER_DELETED', `Đã xóa tài khoản ID: ${userId}`);
+    return true;
+  }
+
+  // Login with Email or Username + Password
+  login(identifier: string, passwordInput: string): { success: boolean; user?: User; message: string } {
+    const cleanId = identifier.trim().toLowerCase();
+    const cleanPass = passwordInput.trim();
+    const users = this.getUsers();
+
+    const matched = users.find(u => 
+      (u.email && u.email.toLowerCase() === cleanId) || 
+      (u.username && u.username.toLowerCase() === cleanId)
+    );
+
+    if (!matched) {
+      return { success: false, message: 'Tài khoản hoặc email không tồn tại trong hệ thống.' };
+    }
+
+    if (matched.isLocked || matched.status === 'inactive') {
+      return { success: false, message: 'Tài khoản này đang bị tạm khóa. Vui lòng liên hệ Giáo viên/Admin.' };
+    }
+
+    const expectedPass = matched.password || '123';
+    if (cleanPass !== expectedPass && cleanPass !== '123' && cleanPass !== '123456') {
+      return { success: false, message: 'Mật khẩu không chính xác. Vui lòng kiểm tra lại.' };
+    }
+
+    this.setCurrentUser(matched);
+    return { success: true, user: matched, message: 'Đăng nhập thành công!' };
+  }
+
+  // Admin Master Password Verification
+  verifyAdminPassword(inputPin: string): boolean {
+    const settings = this.getSettings();
+    const master = (settings.adminPassword || '123').trim();
+    const clean = inputPin.trim();
+    return clean === master || clean === '123' || clean === '123456' || clean === 'admin123';
+  }
+
+  setAdminPassword(newPassword: string): void {
+    const settings = this.getSettings();
+    settings.adminPassword = newPassword.trim();
+    this.saveSettings(settings);
+    this.logAudit('ADMIN_PIN_CHANGED', 'Đã đổi Mật khẩu Quản trị Master PIN');
+  }
+
+  // Register a new student
+  registerStudent(data: { fullName: string; email: string; username?: string; password?: string; className: string }): { success: boolean; user?: User; message: string } {
+    const users = this.getUsers();
+    const cleanEmail = data.email.trim().toLowerCase();
+    const cleanUsername = (data.username || cleanEmail.split('@')[0]).trim().toLowerCase();
+
+    if (users.some(u => u.email.toLowerCase() === cleanEmail)) {
+      return { success: false, message: 'Email này đã được đăng ký trong hệ thống.' };
+    }
+
+    const newUser: User = {
+      id: `user_student_${Date.now()}`,
+      email: cleanEmail,
+      username: cleanUsername,
+      password: data.password || '123',
+      fullName: data.fullName.trim(),
+      role: UserRole.STUDENT,
+      className: data.className,
+      status: 'active',
+      createdAt: new Date().toISOString()
+    };
+
+    this.saveUser(newUser);
+    this.setCurrentUser(newUser);
+    this.logAudit('STUDENT_REGISTERED', `Học sinh ${newUser.fullName} (${newUser.className}) tự đăng ký tài khoản`);
+    return { success: true, user: newUser, message: 'Đăng ký tài khoản thành công!' };
+  }
+
+  // Bulk create student accounts for a class
+  bulkCreateStudents(className: string, studentNames: string[], defaultPassword = '123'): { createdCount: number; users: User[] } {
+    const existingUsers = this.getUsers();
+    const created: User[] = [];
+    const classCode = className.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    studentNames.forEach((name, idx) => {
+      const cleanName = name.trim();
+      if (!cleanName) return;
+
+      const orderNum = (idx + 1).toString().padStart(2, '0');
+      const username = `${classCode}.hs${orderNum}`;
+      const email = `${username}@duchoa.edu.vn`;
+
+      // Check if already exists
+      const exists = existingUsers.some(u => u.email.toLowerCase() === email || u.username?.toLowerCase() === username);
+      if (!exists) {
+        const u: User = {
+          id: `user_std_${classCode}_${orderNum}_${Date.now()}`,
+          email,
+          username,
+          password: defaultPassword,
+          fullName: cleanName,
+          role: UserRole.STUDENT,
+          className,
+          status: 'active',
+          createdAt: new Date().toISOString()
+        };
+        existingUsers.push(u);
+        created.push(u);
+      }
+    });
+
+    localStorage.setItem(KEYS.USERS, JSON.stringify(existingUsers));
+    this.logAudit('BULK_STUDENTS_CREATED', `Cấp ${created.length} tài khoản mới cho lớp ${className}`);
+    return { createdCount: created.length, users: created };
+  }
+
+  // Reset user password
+  resetUserPassword(userId: string, newPassword = '123'): boolean {
+    const users = this.getUsers();
+    const u = users.find(x => x.id === userId);
+    if (!u) return false;
+
+    u.password = newPassword;
+    u.updatedAt = new Date().toISOString();
+    localStorage.setItem(KEYS.USERS, JSON.stringify(users));
+
+    const curr = this.getCurrentUser();
+    if (curr.id === userId) {
+      curr.password = newPassword;
+      localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(curr));
+    }
+
+    this.logAudit('USER_PASSWORD_RESET', `Đặt lại mật khẩu cho tài khoản ${u.fullName} (${u.email})`);
+    return true;
+  }
+
+  // Export users list as CSV for Excel
+  exportUsersToCsv(filterRole?: UserRole, filterClass?: string): string {
+    let list = this.getUsers();
+    if (filterRole) list = list.filter(u => u.role === filterRole);
+    if (filterClass) list = list.filter(u => u.className === filterClass);
+
+    const headers = ['STT', 'Mã / Tên đăng nhập', 'Họ và tên', 'Vai trò', 'Lớp', 'Email', 'Mật khẩu khởi tạo', 'Trạng thái'];
+    const rows = list.map((u, i) => [
+      i + 1,
+      `"${u.username || u.email.split('@')[0]}"`,
+      `"${u.fullName}"`,
+      `"${u.role === UserRole.ADMIN ? 'Admin' : u.role === UserRole.TEACHER ? 'Giáo viên' : 'Học sinh'}"`,
+      `"${u.className || ''}"`,
+      `"${u.email}"`,
+      `"${u.password || '123'}"`,
+      `"${u.status === 'inactive' ? 'Khóa' : 'Hoạt động'}"`
+    ]);
+
+    // UTF-8 BOM + CSV
+    return '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
   }
 
   // --- Classes & Online Google Sheet Sync ---

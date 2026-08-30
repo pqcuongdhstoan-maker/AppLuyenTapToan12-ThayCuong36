@@ -43,10 +43,14 @@ export enum FocusMode {
 export interface User {
   id: string;
   email: string;
+  username?: string;
+  password?: string;
   fullName: string;
   role: UserRole;
   className?: string;
+  phone?: string;
   avatar?: string;
+  status?: 'active' | 'inactive';
   isLocked?: boolean;
   createdAt: string;
   updatedAt?: string;
@@ -224,6 +228,10 @@ export interface SystemSettings {
   appTitle: string;
   schoolYear: string;
   geminiModel: string;
+  adminPassword?: string; // Mật khẩu Master PIN vào khu vực Quản trị (mặc định: 123456)
+  teacherDefaultPassword?: string; // Mật khẩu khởi tạo cho giáo viên (mặc định: 123456)
+  studentDefaultPassword?: string; // Mật khẩu khởi tạo cho học sinh (mặc định: 123456)
+  requireAdminPassword?: boolean; // Bắt buộc nhập mật khẩu khi vào Quản trị
   googleAppsScriptUrl: string;
   googleSheetWebhookUrl?: string;
   googleSheetClassesUrl?: string; // Link Google Sheets / CSV chứa danh sách lớp & học sinh

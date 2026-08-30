@@ -39,39 +39,54 @@ export const INITIAL_USERS: User[] = [
   {
     id: 'user_admin',
     email: 'admin@duchoa.edu.vn',
+    username: 'admin',
+    password: '123',
     fullName: 'Ban Giám Hiệu / Quản Trị',
     role: UserRole.ADMIN,
+    status: 'active',
     createdAt: '2026-08-01T00:00:00.000Z'
   },
   {
     id: 'user_teacher_cuong',
     email: 'cuong.pq@duchoa.edu.vn',
+    username: 'gvcuong',
+    password: '123',
     fullName: 'Phan Quốc Cường',
     role: UserRole.TEACHER,
+    status: 'active',
     createdAt: '2026-08-01T00:00:00.000Z'
   },
   {
     id: 'user_student_an',
     email: 'an.nguyen@duchoa.edu.vn',
+    username: '12tn1.an',
+    password: '123',
     fullName: 'Nguyễn Văn An',
     role: UserRole.STUDENT,
     className: '12TN1',
+    status: 'active',
     createdAt: '2026-08-15T00:00:00.000Z'
   },
   {
     id: 'user_student_bich',
     email: 'bich.le@duchoa.edu.vn',
+    username: '12a1.bich',
+    password: '123',
     fullName: 'Lê Thị Bích',
     role: UserRole.STUDENT,
     className: '12A1',
+    status: 'active',
     createdAt: '2026-08-15T00:00:00.000Z'
   },
   {
     id: 'user_student_duc',
     email: 'duc.tran@duchoa.edu.vn',
+    username: '12tn2.duc',
+    password: '123',
     fullName: 'Trần Minh Đức',
     role: UserRole.STUDENT,
     className: '12TN2',
+    status: 'active',
     createdAt: '2026-08-15T00:00:00.000Z'
   }
 ];
@@ -82,6 +97,10 @@ export const INITIAL_SYSTEM_SETTINGS: SystemSettings = {
   appTitle: 'Luyện tập Toán 12 - KNTT',
   schoolYear: '2026 - 2027',
   geminiModel: 'gemini-3.7-flash',
+  adminPassword: '123',
+  teacherDefaultPassword: '123',
+  studentDefaultPassword: '123',
+  requireAdminPassword: true,
   googleAppsScriptUrl: '',
   googleSheetWebhookUrl: '',
   googleSheetClassesUrl: '',

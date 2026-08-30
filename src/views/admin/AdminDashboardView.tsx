@@ -11,6 +11,7 @@ import {
   Database,
   History,
   Key,
+  KeyRound,
   Users,
   Settings as SettingsIcon,
   RefreshCcw,
@@ -23,6 +24,7 @@ import {
   FocusMode
 } from '../../types';
 import { storageService } from '../../services/storageService';
+import { AccountProvisioningModal } from '../../components/auth/AccountProvisioningModal';
 
 interface AdminDashboardViewProps {
   currentUser: User;
@@ -40,6 +42,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ currentU
 
   // New user modal
   const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [showProvisioningModal, setShowProvisioningModal] = useState(false);
   const [newFullName, setNewFullName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newRole, setNewRole] = useState<UserRole>(UserRole.STUDENT);
@@ -298,6 +301,19 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ currentU
                 value={settings.schoolName}
                 onChange={(e) => setSettings({ ...settings, schoolName: e.target.value })}
                 className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-800"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2 flex items-center justify-between">
+                <span>Mật khẩu Quản trị (Master PIN):</span>
+                <span className="text-[10px] text-purple-600 font-normal">Dùng để mở Quản trị GV & Admin</span>
+              </label>
+              <input
+                type="text"
+                value={settings.adminPassword || '123'}
+                onChange={(e) => setSettings({ ...settings, adminPassword: e.target.value })}
+                className="w-full p-3 bg-purple-50/50 border border-purple-200 rounded-xl text-xs font-mono font-bold text-purple-900"
               />
             </div>
 
@@ -657,17 +673,31 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ currentU
       {/* TAB 3: USER MANAGEMENT */}
       {activeTab === 'users' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-extrabold text-slate-900">
-              Danh Sách Tài Khoản Người Dùng
-            </h3>
-            <button
-              onClick={() => setShowAddUserModal(true)}
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5"
-            >
-              <UserPlus className="w-4 h-4" />
-              THÊM NGƯỜI DÙNG MỚI
-            </button>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-5 rounded-3xl border border-slate-200 shadow-xs">
+            <div>
+              <h3 className="text-base font-extrabold text-slate-900">
+                Danh Sách Tài Khoản & Mật Khẩu ({users.length})
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Quản lý phân quyền, cấp tài khoản đăng nhập cho Giáo viên và Học sinh toàn trường
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowProvisioningModal(true)}
+                className="px-4 py-2.5 bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5"
+              >
+                <Sparkles className="w-4 h-4" />
+                CẤP TÀI KHOẢN HÀNG LOẠT THEO LỚP
+              </button>
+              <button
+                onClick={() => setShowAddUserModal(true)}
+                className="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5"
+              >
+                <UserPlus className="w-4 h-4" />
+                THÊM LẺ
+              </button>
+            </div>
           </div>
 
           <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
@@ -675,17 +705,21 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ currentU
               <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200">
                 <tr>
                   <th className="px-5 py-3.5">Họ và tên</th>
-                  <th className="px-4 py-3.5">Email</th>
+                  <th className="px-4 py-3.5">Tên đăng nhập / Email</th>
                   <th className="px-4 py-3.5">Vai trò</th>
                   <th className="px-4 py-3.5">Lớp</th>
-                  <th className="px-4 py-3.5">Ngày tạo</th>
+                  <th className="px-4 py-3.5">Mật khẩu</th>
+                  <th className="px-4 py-3.5 text-right">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                 {users.map((u) => (
                   <tr key={u.id} className="hover:bg-slate-50">
                     <td className="px-5 py-3.5 font-bold text-slate-900">{u.fullName}</td>
-                    <td className="px-4 py-3.5 text-slate-500">{u.email}</td>
+                    <td className="px-4 py-3.5">
+                      <div className="font-semibold text-indigo-700">{u.username || u.email.split('@')[0]}</div>
+                      <div className="text-[10px] text-slate-400">{u.email}</div>
+                    </td>
                     <td className="px-4 py-3.5">
                       <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
                         u.role === UserRole.ADMIN ? 'bg-purple-100 text-purple-700' :
@@ -696,7 +730,40 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ currentU
                       </span>
                     </td>
                     <td className="px-4 py-3.5">{u.className ? `Lớp ${u.className}` : '--'}</td>
-                    <td className="px-4 py-3.5 text-slate-400">{new Date(u.createdAt).toLocaleDateString('vi-VN')}</td>
+                    <td className="px-4 py-3.5">
+                      <span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-800 font-bold">
+                        {u.password || '123'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3.5 text-right space-x-1">
+                      <button
+                        onClick={() => {
+                          const newPass = prompt(`Nhập mật khẩu mới cho ${u.fullName}:`, '123');
+                          if (newPass && newPass.trim()) {
+                            storageService.resetUserPassword(u.id, newPass.trim());
+                            refreshAll();
+                          }
+                        }}
+                        className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                        title="Đổi mật khẩu"
+                      >
+                        <KeyRound className="w-3.5 h-3.5" />
+                      </button>
+                      {u.id !== 'user_admin' && (
+                        <button
+                          onClick={() => {
+                            if (confirm(`Bạn có chắc muốn xóa tài khoản ${u.fullName}?`)) {
+                              storageService.deleteUser(u.id);
+                              refreshAll();
+                            }
+                          }}
+                          className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                          title="Xóa tài khoản"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -864,6 +931,13 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ currentU
           </div>
         </div>
       )}
+
+      {/* Bulk Account Provisioning & Excel Export Hub */}
+      <AccountProvisioningModal
+        isOpen={showProvisioningModal}
+        onClose={() => setShowProvisioningModal(false)}
+        onUpdated={refreshAll}
+      />
     </div>
   );
 };
