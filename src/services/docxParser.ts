@@ -226,16 +226,63 @@ export function convertOmmlToLatex(ommlNode: Element): { latex: string; confiden
   }
 }
 
+function findChildrenByTag(el: Element, tagName: string): Element[] {
+  const result: Element[] = [];
+  const target = tagName.toLowerCase();
+  
+  function scan(node: Element) {
+    const loc = (node.localName || node.nodeName.replace(/^.*:/, '')).toLowerCase();
+    if (loc === target) {
+      result.push(node);
+    }
+    for (let i = 0; i < node.childNodes.length; i++) {
+      const ch = node.childNodes[i] as Element;
+      if (ch && ch.nodeType === 1) {
+        scan(ch);
+      }
+    }
+  }
+
+  for (let i = 0; i < el.childNodes.length; i++) {
+    const ch = el.childNodes[i] as Element;
+    if (ch && ch.nodeType === 1) {
+      scan(ch);
+    }
+  }
+  return result;
+}
+
+function getAttr(el: Element, attrName: string): string | null {
+  const target = attrName.toLowerCase();
+  const direct = el.getAttribute(attrName);
+  if (direct) return direct;
+  
+  if (el.attributes) {
+    for (let i = 0; i < el.attributes.length; i++) {
+      const a = el.attributes[i];
+      const loc = (a.localName || a.name.replace(/^.*:/, '')).toLowerCase();
+      if (loc === target || a.name.toLowerCase() === target || a.name.toLowerCase().endsWith(':' + target)) {
+        return a.value;
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * Parses a Word .docx file ArrayBuffer or File into structured Questions
  */
-export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<DocxParseResult> {
-  const fileBuffer = fileInput instanceof File ? await fileInput.arrayBuffer() : fileInput;
-  const zip = await JSZip.loadAsync(fileBuffer);
-  const docXmlFile = zip.file('word/document.xml');
+export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxParseResult> {
+  let zip: JSZip;
+  try {
+    zip = await JSZip.loadAsync(fileData);
+  } catch (err) {
+    throw new Error('Không thể đọc file Word (.docx). File có thể bị hỏng hoặc sai định dạng.');
+  }
 
+  const docXmlFile = zip.file('word/document.xml');
   if (!docXmlFile) {
-    throw new Error('Tệp không đúng định dạng Word (.docx) hợp lệ hoặc thiếu document.xml');
+    throw new Error('Cấu trúc file Word không hợp lệ (thiếu word/document.xml).');
   }
 
   const docXmlText = await docXmlFile.async('text');
@@ -254,13 +301,13 @@ export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<Docx
     if (relsFile) {
       const relsXml = await relsFile.async('text');
       const relsDoc = parser.parseFromString(relsXml, 'application/xml');
-      const relationships = relsDoc.getElementsByTagName('Relationship');
+      const relationships = findChildrenByTag(relsDoc.documentElement, 'Relationship');
 
       for (let i = 0; i < relationships.length; i++) {
         const rel = relationships[i];
-        const id = rel.getAttribute('Id');
-        const target = rel.getAttribute('Target');
-        const type = rel.getAttribute('Type') || '';
+        const id = getAttr(rel, 'Id');
+        const target = getAttr(rel, 'Target');
+        const type = getAttr(rel, 'Type') || '';
 
         if (id && target) {
           const cleanTarget = target.startsWith('/') ? target.substring(1) : `word/${target}`;
@@ -311,7 +358,7 @@ export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<Docx
     console.warn('Could not extract relationships / OLE objects from docx:', e);
   }
 
-  const body = xmlDoc.getElementsByTagName('w:body')[0];
+  const body = findChildrenByTag(xmlDoc.documentElement, 'body')[0] || xmlDoc.documentElement;
   const extractedLines: { text: string; image?: string; hasLowConfidenceMath?: boolean }[] = [];
 
   function processRunOrElement(el: Element): { text: string; image?: string; hasLowConfidenceMath?: boolean } {
@@ -319,10 +366,10 @@ export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<Docx
     let pImage: string | undefined = undefined;
     let pLowConfidence = false;
 
-    const tag = el.localName || el.nodeName.replace(/^.*:/, '');
+    const tag = (el.localName || el.nodeName.replace(/^.*:/, '')).toLowerCase();
 
     // 1. OMML Math (<m:oMath>, <m:oMathPara>)
-    if (tag === 'oMath' || tag === 'oMathPara') {
+    if (tag === 'omath' || tag === 'omathpara') {
       const { latex, confident } = convertOmmlToLatex(el);
       if (!confident) {
         pLowConfidence = true;
@@ -334,15 +381,19 @@ export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<Docx
 
     // 2. MathType OLE Object (<w:object>)
     if (tag === 'object') {
-      const oleNodes = el.getElementsByTagName('o:OLEObject');
+      const oleNodes = findChildrenByTag(el, 'OLEObject');
       let foundMath = false;
       for (let o = 0; o < oleNodes.length; o++) {
-        const rId = oleNodes[o].getAttribute('r:id') || '';
-        const shapeId = oleNodes[o].getAttribute('ShapeID') || '';
+        const rId = getAttr(oleNodes[o], 'id') || '';
+        const shapeId = getAttr(oleNodes[o], 'ShapeID') || '';
         
         let latex = oleMap[rId];
-        if (!latex) {
-          const matchingKey = Object.keys(oleMap).find(k => (rId && k.includes(rId)) || (shapeId && k.includes(shapeId)));
+        if (!latex && rId) {
+          const matchingKey = Object.keys(oleMap).find(k => k.includes(rId) || rId.includes(k));
+          if (matchingKey) latex = oleMap[matchingKey];
+        }
+        if (!latex && shapeId) {
+          const matchingKey = Object.keys(oleMap).find(k => k.includes(shapeId) || shapeId.includes(k));
           if (matchingKey) latex = oleMap[matchingKey];
         }
 
@@ -353,9 +404,9 @@ export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<Docx
       }
 
       // Check for image representation in shape if math wasn't decoded as text
-      const vImgs = el.getElementsByTagName('v:imagedata');
+      const vImgs = findChildrenByTag(el, 'imagedata');
       for (let v = 0; v < vImgs.length; v++) {
-        const imgId = vImgs[v].getAttribute('r:id') || vImgs[v].getAttribute('r:href');
+        const imgId = getAttr(vImgs[v], 'id') || getAttr(vImgs[v], 'href');
         if (imgId && imageMap[imgId]) {
           if (!foundMath) {
             pImage = imageMap[imgId];
@@ -367,9 +418,9 @@ export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<Docx
 
     // 3. VML Picture (<w:pict>)
     if (tag === 'pict') {
-      const vImgs = el.getElementsByTagName('v:imagedata');
+      const vImgs = findChildrenByTag(el, 'imagedata');
       for (let v = 0; v < vImgs.length; v++) {
-        const imgId = vImgs[v].getAttribute('r:id') || vImgs[v].getAttribute('r:href');
+        const imgId = getAttr(vImgs[v], 'id') || getAttr(vImgs[v], 'href');
         if (imgId && imageMap[imgId]) {
           pImage = imageMap[imgId];
         }
@@ -379,9 +430,9 @@ export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<Docx
 
     // 4. Drawing (<w:drawing>)
     if (tag === 'drawing') {
-      const blipNodes = el.getElementsByTagName('a:blip');
+      const blipNodes = findChildrenByTag(el, 'blip');
       for (let b = 0; b < blipNodes.length; b++) {
-        const embedId = blipNodes[b].getAttribute('r:embed');
+        const embedId = getAttr(blipNodes[b], 'embed');
         if (embedId && imageMap[embedId]) {
           pImage = imageMap[embedId];
         }
@@ -389,17 +440,24 @@ export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<Docx
       return { text: pText, image: pImage, hasLowConfidenceMath: pLowConfidence };
     }
 
+    // 5. Standard Text Node (<w:t>)
+    if (tag === 't') {
+      pText += el.textContent || '';
+      return { text: pText, image: pImage, hasLowConfidenceMath: pLowConfidence };
+    }
+
     // 6. Run (<w:r>)
     if (tag === 'r') {
-      const isUnderlined = el.getElementsByTagName('w:u').length > 0;
+      const isUnderlined = findChildrenByTag(el, 'u').length > 0;
       let runText = '';
       for (let c = 0; c < el.childNodes.length; c++) {
         const child = el.childNodes[c] as Element;
-        if (!child.tagName) continue;
-        const res = processRunOrElement(child);
-        if (res.text) runText += res.text;
-        if (res.image && !pImage) pImage = res.image;
-        if (res.hasLowConfidenceMath) pLowConfidence = true;
+        if (child && child.nodeType === 1) {
+          const res = processRunOrElement(child);
+          if (res.text) runText += res.text;
+          if (res.image && !pImage) pImage = res.image;
+          if (res.hasLowConfidenceMath) pLowConfidence = true;
+        }
       }
       if (isUnderlined && runText.trim()) {
         runText = `<u>${runText}</u>`;
@@ -411,11 +469,12 @@ export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<Docx
     // 7. Other Container Elements
     for (let c = 0; c < el.childNodes.length; c++) {
       const child = el.childNodes[c] as Element;
-      if (!child.tagName) continue;
-      const res = processRunOrElement(child);
-      if (res.text) pText += res.text;
-      if (res.image && !pImage) pImage = res.image;
-      if (res.hasLowConfidenceMath) pLowConfidence = true;
+      if (child && child.nodeType === 1) {
+        const res = processRunOrElement(child);
+        if (res.text) pText += res.text;
+        if (res.image && !pImage) pImage = res.image;
+        if (res.hasLowConfidenceMath) pLowConfidence = true;
+      }
     }
 
     return { text: pText, image: pImage, hasLowConfidenceMath: pLowConfidence };
@@ -427,17 +486,17 @@ export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<Docx
   }
 
   function processTable(tbl: Element): { text: string } {
-    const rows = Array.from(tbl.getElementsByTagName('w:tr'));
+    const rows = findChildrenByTag(tbl, 'tr');
     if (rows.length === 0) return { text: '' };
 
     const tableRows: string[] = [];
     let maxCols = 0;
 
     for (const r of rows) {
-      const cells = Array.from(r.getElementsByTagName('w:tc'));
+      const cells = findChildrenByTag(r, 'tc');
       maxCols = Math.max(maxCols, cells.length);
       const cellTexts = cells.map(c => {
-        const ps = Array.from(c.getElementsByTagName('w:p'));
+        const ps = findChildrenByTag(c, 'p');
         const cellContent = ps.map(p => processParagraph(p).text).filter(Boolean).join(' ');
         return cellContent || ' ';
       });
@@ -452,8 +511,8 @@ export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<Docx
   if (body) {
     for (let i = 0; i < body.childNodes.length; i++) {
       const el = body.childNodes[i] as Element;
-      if (!el.tagName) continue;
-      const tag = el.localName || el.nodeName.replace(/^.*:/, '');
+      if (!el || el.nodeType !== 1) continue;
+      const tag = (el.localName || el.nodeName.replace(/^.*:/, '')).toLowerCase();
 
       if (tag === 'p') {
         const res = processParagraph(el);
