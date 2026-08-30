@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { Question, QuestionType, DifficultyLevel, QuestionOption, TrueFalseItem } from '../types';
+import { decodeMtefToLatex } from './mtefDecoder';
 
 export interface DocxParseResult {
   title: string;
@@ -193,8 +194,10 @@ export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<Docx
   const warnings: string[] = [];
   let hasUnconfidentFormulas = false;
 
-  // Extract embedded media images map (rId -> base64)
+  // Extract embedded media images map (rId -> base64) and OLE MathType map (rId -> LaTeX)
   const imageMap: { [relId: string]: string } = {};
+  const oleMap: { [relId: string]: string } = {};
+
   try {
     const relsFile = zip.file('word/_rels/document.xml.rels');
     if (relsFile) {
@@ -206,65 +209,143 @@ export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<Docx
         const rel = relationships[i];
         const id = rel.getAttribute('Id');
         const target = rel.getAttribute('Target');
-        const type = rel.getAttribute('Type');
+        const type = rel.getAttribute('Type') || '';
 
-        if (id && target && type && type.includes('/image')) {
-          // Clean target path
+        if (id && target) {
           const cleanTarget = target.startsWith('/') ? target.substring(1) : `word/${target}`;
-          const imageFile = zip.file(cleanTarget) || zip.file(target);
-          if (imageFile) {
-            const base64 = await imageFile.async('base64');
-            const ext = target.split('.').pop()?.toLowerCase() || 'png';
-            imageMap[id] = `data:image/${ext};base64,${base64}`;
+          if (type.includes('/image') || target.match(/\.(png|jpg|jpeg|gif|wmf|emf|svg)$/i)) {
+            const imageFile = zip.file(cleanTarget) || zip.file(target);
+            if (imageFile) {
+              const base64 = await imageFile.async('base64');
+              const ext = target.split('.').pop()?.toLowerCase() || 'png';
+              imageMap[id] = `data:image/${ext};base64,${base64}`;
+            }
+          } else if (type.includes('oleObject') || target.endsWith('.bin') || target.includes('embeddings')) {
+            const binFile = zip.file(cleanTarget) || zip.file(target) || zip.file(`word/embeddings/${target.split('/').pop()}`);
+            if (binFile) {
+              try {
+                const binBuffer = await binFile.async('arraybuffer');
+                const latex = decodeMtefToLatex(binBuffer);
+                if (latex) {
+                  oleMap[id] = latex;
+                }
+              } catch (err) {
+                console.warn('MTEF decode error for rel:', id, err);
+              }
+            }
           }
         }
       }
     }
   } catch (e) {
-    console.warn('Could not extract images from docx:', e);
+    console.warn('Could not extract relationships / OLE objects from docx:', e);
   }
 
   const body = xmlDoc.getElementsByTagName('w:body')[0];
   const extractedLines: { text: string; image?: string; hasLowConfidenceMath?: boolean }[] = [];
 
-  function processParagraph(p: Element): { text: string; image?: string; hasLowConfidenceMath?: boolean } {
+  function processRunOrElement(el: Element): { text: string; image?: string; hasLowConfidenceMath?: boolean } {
     let pText = '';
     let pImage: string | undefined = undefined;
     let pLowConfidence = false;
 
-    for (let j = 0; j < p.childNodes.length; j++) {
-      const child = p.childNodes[j] as Element;
-      if (!child.tagName) continue;
+    const tag = el.localName || el.nodeName.replace(/^.*:/, '');
 
-      const tag = child.localName || child.nodeName.replace(/^.*:/, '');
+    // 1. OMML Math (<m:oMath>, <m:oMathPara>)
+    if (tag === 'oMath' || tag === 'oMathPara') {
+      const { latex, confident } = convertOmmlToLatex(el);
+      if (!confident) {
+        pLowConfidence = true;
+        hasUnconfidentFormulas = true;
+      }
+      pText += ` $${latex}$ `;
+      return { text: pText, image: pImage, hasLowConfidenceMath: pLowConfidence };
+    }
 
-      // Check for OMML Math
-      if (tag === 'oMath' || tag === 'oMathPara') {
-        const { latex, confident } = convertOmmlToLatex(child);
-        if (!confident) {
-          pLowConfidence = true;
-          hasUnconfidentFormulas = true;
+    // 2. MathType OLE Object (<w:object>)
+    if (tag === 'object') {
+      const oleNodes = el.getElementsByTagName('o:OLEObject');
+      let foundMath = false;
+      for (let o = 0; o < oleNodes.length; o++) {
+        const rId = oleNodes[o].getAttribute('r:id');
+        if (rId && oleMap[rId]) {
+          pText += ` $${oleMap[rId]}$ `;
+          foundMath = true;
         }
-        pText += ` $${latex}$ `;
-      } else if (tag === 'r') {
-        // Run element <w:r>
-        const textNodes = child.getElementsByTagName('w:t');
-        for (let t = 0; t < textNodes.length; t++) {
-          pText += textNodes[t].textContent || '';
-        }
+      }
 
-        // Check for embedded drawing/image in run
-        const blipNodes = child.getElementsByTagName('a:blip');
-        for (let b = 0; b < blipNodes.length; b++) {
-          const embedId = blipNodes[b].getAttribute('r:embed');
-          if (embedId && imageMap[embedId]) {
-            pImage = imageMap[embedId];
+      // Check for image representation in shape
+      const vImgs = el.getElementsByTagName('v:imagedata');
+      for (let v = 0; v < vImgs.length; v++) {
+        const imgId = vImgs[v].getAttribute('r:id') || vImgs[v].getAttribute('r:href');
+        if (imgId && imageMap[imgId]) {
+          if (!foundMath) {
+            pImage = imageMap[imgId];
           }
         }
       }
+      return { text: pText, image: pImage, hasLowConfidenceMath: pLowConfidence };
     }
 
-    return { text: pText.trim(), image: pImage, hasLowConfidenceMath: pLowConfidence };
+    // 3. VML Picture (<w:pict>)
+    if (tag === 'pict') {
+      const vImgs = el.getElementsByTagName('v:imagedata');
+      for (let v = 0; v < vImgs.length; v++) {
+        const imgId = vImgs[v].getAttribute('r:id') || vImgs[v].getAttribute('r:href');
+        if (imgId && imageMap[imgId]) {
+          pImage = imageMap[imgId];
+        }
+      }
+      return { text: pText, image: pImage, hasLowConfidenceMath: pLowConfidence };
+    }
+
+    // 4. Drawing (<w:drawing>)
+    if (tag === 'drawing') {
+      const blipNodes = el.getElementsByTagName('a:blip');
+      for (let b = 0; b < blipNodes.length; b++) {
+        const embedId = blipNodes[b].getAttribute('r:embed');
+        if (embedId && imageMap[embedId]) {
+          pImage = imageMap[embedId];
+        }
+      }
+      return { text: pText, image: pImage, hasLowConfidenceMath: pLowConfidence };
+    }
+
+    // 6. Run (<w:r>)
+    if (tag === 'r') {
+      const isUnderlined = el.getElementsByTagName('w:u').length > 0;
+      let runText = '';
+      for (let c = 0; c < el.childNodes.length; c++) {
+        const child = el.childNodes[c] as Element;
+        if (!child.tagName) continue;
+        const res = processRunOrElement(child);
+        if (res.text) runText += res.text;
+        if (res.image && !pImage) pImage = res.image;
+        if (res.hasLowConfidenceMath) pLowConfidence = true;
+      }
+      if (isUnderlined && runText.trim()) {
+        runText = `<u>${runText}</u>`;
+      }
+      pText += runText;
+      return { text: pText, image: pImage, hasLowConfidenceMath: pLowConfidence };
+    }
+
+    // 7. Other Container Elements
+    for (let c = 0; c < el.childNodes.length; c++) {
+      const child = el.childNodes[c] as Element;
+      if (!child.tagName) continue;
+      const res = processRunOrElement(child);
+      if (res.text) pText += res.text;
+      if (res.image && !pImage) pImage = res.image;
+      if (res.hasLowConfidenceMath) pLowConfidence = true;
+    }
+
+    return { text: pText, image: pImage, hasLowConfidenceMath: pLowConfidence };
+  }
+
+  function processParagraph(p: Element): { text: string; image?: string; hasLowConfidenceMath?: boolean } {
+    const res = processRunOrElement(p);
+    return { text: res.text.trim(), image: res.image, hasLowConfidenceMath: res.hasLowConfidenceMath };
   }
 
   function processTable(tbl: Element): { text: string } {
@@ -479,18 +560,18 @@ function processQuestionBlock(
   }
 
   if (part === 1) {
-    // MCQ: find options A, B, C, D (supports both multiline and inline "A. ... B. ... C. ... D. ...")
-    const optRegex = /(?:^|\s|\t)([A-D])[\.\:\)]\s*([\s\S]*?)(?=(?:\s|\t)[A-D][\.\:\)]|$)/g;
+    // MCQ: find options A, B, C, D (supports inline, multiline, and underlined <u>A</u>. / <u>A.</u>)
+    const optRegex = /(?:^|\s|\t)(?:<u>)?([A-D])(?:<\/u>)?[\.\:\)]\s*([\s\S]*?)(?=(?:\s|\t)(?:<u>)?[A-D](?:<\/u>)?[\.\:\)]|$)/g;
     const matches = Array.from(content.matchAll(optRegex));
 
     if (matches.length >= 2) {
       options = matches.slice(0, 4).map(m => ({
         id: m[1].toUpperCase(),
-        content: m[2].replace(/\n/g, ' ').trim()
+        content: m[2].replace(/<\/?u>/g, '').replace(/\n/g, ' ').trim()
       }));
 
       // Strip options from main question content
-      const firstOptIndex = content.search(/(?:^|\s|\t)[A-D][\.\:\)]/);
+      const firstOptIndex = content.search(/(?:^|\s|\t)(?:<u>)?[A-D](?:<\/u>)?[\.\:\)]/);
       if (firstOptIndex !== -1) {
         content = content.substring(0, firstOptIndex).trim();
       }
@@ -504,12 +585,18 @@ function processQuestionBlock(
       ];
     }
 
-    // Guess correct option from solution or "(Chọn A)" or "Đáp án: A"
-    const ansMatch = (solution || block).match(/(?:chọn|đáp án|đáp án đúng|key|đa)[\:\s]*([A-D])\b/i);
-    if (ansMatch) {
-      correctOption = ansMatch[1].toUpperCase();
+    // Detect underlined option for correct answer (e.g. <u>D</u>. or <u>D.</u>)
+    const underlinedMatch = block.match(/<u>\s*([A-D])[\.\:\s]*<\/u>|<u>\s*([A-D])\s*<\/u>[\.\:\s]/i);
+    if (underlinedMatch) {
+      correctOption = (underlinedMatch[1] || underlinedMatch[2]).toUpperCase();
     } else {
-      correctOption = 'A';
+      // Guess correct option from solution or "(Chọn A)" or "Đáp án: A"
+      const ansMatch = (solution || block).match(/(?:chọn|đáp án|đáp án đúng|key|đa)[\:\s]*([A-D])\b/i);
+      if (ansMatch) {
+        correctOption = ansMatch[1].toUpperCase();
+      } else {
+        correctOption = 'A';
+      }
     }
 
     return {
