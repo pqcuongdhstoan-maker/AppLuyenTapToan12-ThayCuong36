@@ -1,5 +1,65 @@
 @import "tailwindcss";
 
+/* KaTeX Typography & Formula Enhancements */
+.katex {
+  font-size: 1.08em;
+  text-rendering: geometricPrecision;
+}
+
+/* Enhanced Fraction Bars */
+.katex .frac-line {
+  border-bottom-width: 1.3px !important;
+  border-color: currentColor !important;
+}
+
+/* KaTeX Display Blocks */
+.katex-display {
+  margin: 0.75em 0 !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Custom Scrollbar for Long Equations / Tables */
+.katex-display::-webkit-scrollbar {
+  height: 4px;
+}
+.katex-display::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+/* Bảng Biến Thiên & Array Matrix Styling */
+.katex .arraycolsep {
+  display: inline-block;
+}
+
+.katex .mtable {
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 0 auto;
+}
+
+.katex .mtable td {
+  padding: 0.35rem 0.55rem !important;
+  vertical-align: middle;
+}
+
+.katex .hline-rule {
+  border-bottom: 1.2px solid #94a3b8 !important;
+}
+
+.katex .vline-rule {
+  border-right: 1.2px solid #94a3b8 !important;
+}
+
+/* Math container readability */
+.math-content {
+  line-height: 1.8;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
 @media print {
   header, footer, nav, button, .btn-print, .no-print {
     display: none !important;

@@ -224,12 +224,10 @@ export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<Docx
     console.warn('Could not extract images from docx:', e);
   }
 
-  // Iterate over paragraphs (<w:p>) in document.xml
-  const paragraphs = xmlDoc.getElementsByTagName('w:p');
+  const body = xmlDoc.getElementsByTagName('w:body')[0];
   const extractedLines: { text: string; image?: string; hasLowConfidenceMath?: boolean }[] = [];
 
-  for (let i = 0; i < paragraphs.length; i++) {
-    const p = paragraphs[i];
+  function processParagraph(p: Element): { text: string; image?: string; hasLowConfidenceMath?: boolean } {
     let pText = '';
     let pImage: string | undefined = undefined;
     let pLowConfidence = false;
@@ -266,9 +264,58 @@ export async function parseDocxFile(fileInput: File | ArrayBuffer): Promise<Docx
       }
     }
 
-    const cleanText = pText.trim();
-    if (cleanText || pImage) {
-      extractedLines.push({ text: cleanText, image: pImage, hasLowConfidenceMath: pLowConfidence });
+    return { text: pText.trim(), image: pImage, hasLowConfidenceMath: pLowConfidence };
+  }
+
+  function processTable(tbl: Element): { text: string } {
+    const rows = Array.from(tbl.getElementsByTagName('w:tr'));
+    if (rows.length === 0) return { text: '' };
+
+    const tableRows: string[] = [];
+    let maxCols = 0;
+
+    for (const r of rows) {
+      const cells = Array.from(r.getElementsByTagName('w:tc'));
+      maxCols = Math.max(maxCols, cells.length);
+      const cellTexts = cells.map(c => {
+        const ps = Array.from(c.getElementsByTagName('w:p'));
+        const cellContent = ps.map(p => processParagraph(p).text).filter(Boolean).join(' ');
+        return cellContent || ' ';
+      });
+      tableRows.push(cellTexts.join(' & ') + ' \\\\ \\hline');
+    }
+
+    const colAlign = '|' + Array(maxCols || 1).fill('c').join('|') + '|';
+    const latexTable = `$$\n\\begin{array}{${colAlign}}\n\\hline\n${tableRows.join('\n')}\n\\end{array}\n$$`;
+    return { text: latexTable };
+  }
+
+  if (body) {
+    for (let i = 0; i < body.childNodes.length; i++) {
+      const el = body.childNodes[i] as Element;
+      if (!el.tagName) continue;
+      const tag = el.localName || el.nodeName.replace(/^.*:/, '');
+
+      if (tag === 'p') {
+        const res = processParagraph(el);
+        if (res.text || res.image) {
+          extractedLines.push(res);
+        }
+      } else if (tag === 'tbl') {
+        const res = processTable(el);
+        if (res.text) {
+          extractedLines.push({ text: res.text });
+        }
+      }
+    }
+  } else {
+    // Fallback
+    const paragraphs = xmlDoc.getElementsByTagName('w:p');
+    for (let i = 0; i < paragraphs.length; i++) {
+      const res = processParagraph(paragraphs[i]);
+      if (res.text || res.image) {
+        extractedLines.push(res);
+      }
     }
   }
 
