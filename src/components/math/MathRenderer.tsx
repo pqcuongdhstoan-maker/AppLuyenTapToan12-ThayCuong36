@@ -68,35 +68,36 @@ export function preprocessMathContent(rawText: string): string {
 }
 
 /**
- * Generates delicate, long SVG vector arrows for variation tables
+ * Generates delicate, long, razor-thin SVG vector arrows for variation tables
  */
 function createSvgArrow(type: 'up' | 'down' | 'right'): string {
   if (type === 'up') {
-    return `<div class="w-full flex items-center justify-center min-w-[3.5rem] sm:min-w-[4.5rem] py-1">
-      <svg viewBox="0 0 80 32" class="w-full max-w-[90px] h-6 sm:h-7 stroke-slate-800" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <line x1="6" y1="26" x2="72" y2="6" stroke-width="1.2" stroke-linecap="round" />
-        <polyline points="60,6 72,6 72,18" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+    return `<div class="w-full flex items-center justify-center min-w-[4.5rem] sm:min-w-[6rem] py-1">
+      <svg viewBox="0 0 100 36" class="w-full max-w-[110px] h-6 sm:h-7 overflow-visible" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <line x1="4" y1="28" x2="88" y2="8" stroke="#0f172a" stroke-width="0.85" stroke-linecap="round" />
+        <polygon points="94,6 84,6 87,14" fill="#0f172a" stroke="#0f172a" stroke-width="0.5" stroke-linejoin="round" />
       </svg>
     </div>`;
   }
   if (type === 'down') {
-    return `<div class="w-full flex items-center justify-center min-w-[3.5rem] sm:min-w-[4.5rem] py-1">
-      <svg viewBox="0 0 80 32" class="w-full max-w-[90px] h-6 sm:h-7 stroke-slate-800" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <line x1="6" y1="6" x2="72" y2="26" stroke-width="1.2" stroke-linecap="round" />
-        <polyline points="60,26 72,26 72,14" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+    return `<div class="w-full flex items-center justify-center min-w-[4.5rem] sm:min-w-[6rem] py-1">
+      <svg viewBox="0 0 100 36" class="w-full max-w-[110px] h-6 sm:h-7 overflow-visible" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <line x1="4" y1="8" x2="88" y2="28" stroke="#0f172a" stroke-width="0.85" stroke-linecap="round" />
+        <polygon points="94,30 87,22 84,30" fill="#0f172a" stroke="#0f172a" stroke-width="0.5" stroke-linejoin="round" />
       </svg>
     </div>`;
   }
-  return `<div class="w-full flex items-center justify-center min-w-[3.5rem] sm:min-w-[4.5rem] py-1">
-    <svg viewBox="0 0 80 20" class="w-full max-w-[90px] h-4 stroke-slate-800" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <line x1="6" y1="10" x2="72" y2="10" stroke-width="1.2" stroke-linecap="round" />
-      <polyline points="62,4 72,10 62,16" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+  return `<div class="w-full flex items-center justify-center min-w-[4.5rem] sm:min-w-[6rem] py-1">
+    <svg viewBox="0 0 100 20" class="w-full max-w-[110px] h-4 overflow-visible" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <line x1="4" y1="10" x2="88" y2="10" stroke="#0f172a" stroke-width="0.85" stroke-linecap="round" />
+      <polygon points="94,10 85,5 85,15" fill="#0f172a" stroke="#0f172a" stroke-width="0.5" stroke-linejoin="round" />
     </svg>
   </div>`;
 }
 
 /**
  * Converts LaTeX array/tabular and variation tables into crisp, textbook-grade HTML tables
+ * Exactly matching standard Vietnamese Calculus textbooks: 1 vertical line, 2 horizontal lines, no outer box.
  */
 export function renderLatexTableToHtml(rawTable: string): string {
   // Strip outer array / tabular / center wrappers
@@ -126,12 +127,12 @@ export function renderLatexTableToHtml(rawTable: string): string {
   // Calculate max columns
   const maxCols = Math.max(...parsedRows.map(r => r.length));
 
-  // Determine if row 2 (f(x)) has a sub-row for bottom values/arrows
+  // Determine if row 2 (f(x) or y) has a sub-row for bottom values/arrows
   const hasSubRowForF = parsedRows.length >= 4 && parsedRows[3] && !parsedRows[3][0];
 
-  // Build beautiful, textbook-style HTML table
-  let html = `<div class="my-4 overflow-x-auto flex justify-center">
-    <table class="border-collapse border border-slate-400 bg-white text-xs sm:text-sm font-sans shadow-xs rounded-xl overflow-hidden my-2 border-spacing-0">
+  // Build textbook-style table with ONLY 1 vertical line and 2 horizontal lines
+  let html = `<div class="my-6 overflow-x-auto flex justify-center py-2">
+    <table class="border-collapse bg-transparent text-sm sm:text-base font-serif select-none" style="border: none;">
       <tbody>`;
 
   parsedRows.forEach((row, rowIdx) => {
@@ -145,9 +146,10 @@ export function renderLatexTableToHtml(rawTable: string): string {
     const isThirdRow = rowIdx === 2;
     const isFourthRow = rowIdx === 3;
 
-    const hasBottomBorder = isFirstRow || isSecondRow || (hasSubRowForF ? isFourthRow : rowIdx === parsedRows.length - 1);
+    // Horizontal line ONLY under row 0 (x) and row 1 (y')
+    const hasBottomBorder = isFirstRow || isSecondRow;
 
-    html += `<tr class="${hasBottomBorder ? 'border-b border-slate-400' : ''}">`;
+    html += `<tr class="${hasBottomBorder ? 'border-b border-slate-700/80' : ''}">`;
 
     row.forEach((cell, colIdx) => {
       const isHeaderCol = colIdx === 0;
@@ -158,7 +160,7 @@ export function renderLatexTableToHtml(rawTable: string): string {
         return;
       }
 
-      // Convert arrows to thin, long SVG vector paths
+      // Convert arrows to thin, long, elegant SVG vector paths
       if (cellContent.includes('\\nearrow') || cellContent === '↗' || cellContent.includes('nearrow')) {
         cellContent = createSvgArrow('up');
       } else if (cellContent.includes('\\searrow') || cellContent === '↘' || cellContent.includes('searrow')) {
@@ -166,13 +168,13 @@ export function renderLatexTableToHtml(rawTable: string): string {
       } else if (cellContent.includes('\\rightarrow') || cellContent === '→' || cellContent.includes('rightarrow')) {
         cellContent = createSvgArrow('right');
       } else if (cellContent === '||' || cellContent === '\\|\\|' || cellContent === '|') {
-        cellContent = '<span class="text-slate-400 font-bold tracking-tighter text-sm">||</span>';
+        cellContent = '<span class="text-slate-500 font-bold tracking-tighter text-sm">||</span>';
       } else if (cellContent === '+' || cellContent === '$+$') {
-        cellContent = '<span class="text-blue-600 font-bold text-sm sm:text-base">+</span>';
+        cellContent = '<span class="text-slate-900 font-normal text-base">+</span>';
       } else if (cellContent === '-' || cellContent === '$-$' || cellContent === '−') {
-        cellContent = '<span class="text-rose-600 font-bold text-sm sm:text-base">−</span>';
+        cellContent = '<span class="text-slate-900 font-normal text-base">−</span>';
       } else if (cellContent === '0' || cellContent === '$0$') {
-        cellContent = '<span class="text-slate-800 font-bold">0</span>';
+        cellContent = '<span class="text-slate-900 font-normal">0</span>';
       } else if (cellContent) {
         // Render math for numbers, variables, expressions
         try {
@@ -190,10 +192,10 @@ export function renderLatexTableToHtml(rawTable: string): string {
 
       if (isHeaderCol) {
         const rowSpanAttr = hasSubRowForF && isThirdRow ? 'rowspan="2"' : '';
-        html += `<td ${rowSpanAttr} class="border-r border-slate-400 bg-slate-50 font-bold text-slate-800 px-3.5 sm:px-5 py-2.5 text-center whitespace-nowrap align-middle">${cellContent}</td>`;
+        html += `<td ${rowSpanAttr} class="border-r border-slate-700/80 pr-4 sm:pr-6 pl-2 py-2 text-center whitespace-nowrap align-middle font-serif italic text-base sm:text-lg text-slate-900">${cellContent}</td>`;
       } else {
         const isArrowCell = cellContent.includes('<svg');
-        html += `<td class="px-2 sm:px-3 py-1.5 text-center text-slate-800 font-medium ${isArrowCell ? 'min-w-[4rem] sm:min-w-[5rem]' : 'min-w-[2.2rem] sm:min-w-[2.8rem]'} align-middle">${cellContent}</td>`;
+        html += `<td class="px-3 sm:px-5 py-1.5 text-center text-slate-900 font-serif ${isArrowCell ? 'min-w-[5rem] sm:min-w-[6.5rem]' : 'min-w-[2.5rem] sm:min-w-[3.5rem]'} align-middle">${cellContent}</td>`;
       }
     });
 
