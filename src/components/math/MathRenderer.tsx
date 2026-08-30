@@ -70,43 +70,43 @@ export function preprocessMathContent(rawText: string): string {
 let arrowIdCounter = 0;
 
 /**
- * Generates authentic, slender LaTeX stealth vector arrows for variation tables
+ * Generates bold, long, perfectly symmetrical LaTeX stealth vector arrows for variation tables
  */
 function createSvgArrow(type: 'up' | 'down' | 'right'): string {
   const markerId = `stealth_arr_${++arrowIdCounter}`;
 
   if (type === 'up') {
-    return `<div class="w-full flex items-center justify-center min-w-[4.5rem] sm:min-w-[6.5rem] py-1 px-1">
-      <svg viewBox="0 0 100 36" class="w-full max-w-[115px] h-6 sm:h-7 overflow-visible">
+    return `<div class="w-full flex items-center justify-center min-w-[6rem] sm:min-w-[8.5rem] py-1 px-1">
+      <svg viewBox="0 0 140 38" class="w-full max-w-[150px] h-7 sm:h-8 overflow-visible">
         <defs>
-          <marker id="${markerId}" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-            <path d="M 0 2 L 8 5 L 0 8 L 2 5 Z" fill="#0f172a" />
+          <marker id="${markerId}" viewBox="0 0 10 10" refX="7.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 1.5 L 8.5 5 L 0 8.5 L 2 5 Z" fill="#0f172a" />
           </marker>
         </defs>
-        <line x1="4" y1="28" x2="94" y2="8" stroke="#0f172a" stroke-width="0.9" stroke-linecap="round" marker-end="url(#${markerId})" />
+        <line x1="4" y1="30" x2="132" y2="8" stroke="#0f172a" stroke-width="1.6" stroke-linecap="round" marker-end="url(#${markerId})" />
       </svg>
     </div>`;
   }
   if (type === 'down') {
-    return `<div class="w-full flex items-center justify-center min-w-[4.5rem] sm:min-w-[6.5rem] py-1 px-1">
-      <svg viewBox="0 0 100 36" class="w-full max-w-[115px] h-6 sm:h-7 overflow-visible">
+    return `<div class="w-full flex items-center justify-center min-w-[6rem] sm:min-w-[8.5rem] py-1 px-1">
+      <svg viewBox="0 0 140 38" class="w-full max-w-[150px] h-7 sm:h-8 overflow-visible">
         <defs>
-          <marker id="${markerId}" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-            <path d="M 0 2 L 8 5 L 0 8 L 2 5 Z" fill="#0f172a" />
+          <marker id="${markerId}" viewBox="0 0 10 10" refX="7.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 1.5 L 8.5 5 L 0 8.5 L 2 5 Z" fill="#0f172a" />
           </marker>
         </defs>
-        <line x1="4" y1="8" x2="94" y2="28" stroke="#0f172a" stroke-width="0.9" stroke-linecap="round" marker-end="url(#${markerId})" />
+        <line x1="4" y1="8" x2="132" y2="30" stroke="#0f172a" stroke-width="1.6" stroke-linecap="round" marker-end="url(#${markerId})" />
       </svg>
     </div>`;
   }
-  return `<div class="w-full flex items-center justify-center min-w-[4.5rem] sm:min-w-[6.5rem] py-1 px-1">
-    <svg viewBox="0 0 100 20" class="w-full max-w-[115px] h-4 overflow-visible">
+  return `<div class="w-full flex items-center justify-center min-w-[6rem] sm:min-w-[8.5rem] py-1 px-1">
+    <svg viewBox="0 0 140 22" class="w-full max-w-[150px] h-5 overflow-visible">
       <defs>
-        <marker id="${markerId}" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-          <path d="M 0 2 L 8 5 L 0 8 L 2 5 Z" fill="#0f172a" />
+        <marker id="${markerId}" viewBox="0 0 10 10" refX="7.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 1.5 L 8.5 5 L 0 8.5 L 2 5 Z" fill="#0f172a" />
         </marker>
       </defs>
-      <line x1="4" y1="10" x2="94" y2="10" stroke="#0f172a" stroke-width="0.9" stroke-linecap="round" marker-end="url(#${markerId})" />
+      <line x1="4" y1="11" x2="132" y2="11" stroke="#0f172a" stroke-width="1.6" stroke-linecap="round" marker-end="url(#${markerId})" />
     </svg>
   </div>`;
 }
@@ -211,7 +211,7 @@ export function renderLatexTableToHtml(rawTable: string): string {
         html += `<td ${rowSpanAttr} class="border-r border-slate-700/80 pr-4 sm:pr-6 pl-2 py-2 text-center whitespace-nowrap align-middle font-serif italic text-base sm:text-lg text-slate-900">${cellContent}</td>`;
       } else {
         const isArrowCell = cellContent.includes('<svg');
-        html += `<td class="px-3 sm:px-5 py-1.5 text-center text-slate-900 font-serif ${isArrowCell ? 'min-w-[5rem] sm:min-w-[6.5rem]' : 'min-w-[2.5rem] sm:min-w-[3.5rem]'} align-middle">${cellContent}</td>`;
+        html += `<td class="px-2 sm:px-4 py-1.5 text-center text-slate-900 font-serif ${isArrowCell ? 'min-w-[6.5rem] sm:min-w-[9rem]' : 'min-w-[3rem] sm:min-w-[4.2rem]'} align-middle">${cellContent}</td>`;
       }
     });
 
