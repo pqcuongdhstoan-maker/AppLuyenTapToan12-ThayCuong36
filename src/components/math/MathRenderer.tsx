@@ -67,6 +67,102 @@ export function preprocessMathContent(rawText: string): string {
   return text;
 }
 
+/**
+ * Converts LaTeX array/tabular and variation tables into crisp, textbook-grade HTML tables
+ */
+export function renderLatexTableToHtml(rawTable: string): string {
+  // Strip outer array / tabular / center wrappers
+  const content = rawTable
+    .replace(/\\begin\{center\}/gi, '')
+    .replace(/\\end\{center\}/gi, '')
+    .replace(/\\begin\{(?:tabular|array)\}(?:\[[^\]]*\])?(?:\{[^\}]*\})?/gi, '')
+    .replace(/\\end\{(?:tabular|array)\}/gi, '')
+    .trim();
+
+  // Split into rows by \\
+  const rawRows = content.split(/\\\\/g);
+  const parsedRows: string[][] = [];
+
+  for (const rawRow of rawRows) {
+    const cleanRow = rawRow.replace(/\\hline/g, '').trim();
+    if (!cleanRow) continue;
+
+    // Split row into cells by &
+    const rawCells = cleanRow.split('&');
+    const cells = rawCells.map(c => c.replace(/\$/g, '').trim());
+    parsedRows.push(cells);
+  }
+
+  if (parsedRows.length === 0) return '';
+
+  // Calculate max columns
+  const maxCols = Math.max(...parsedRows.map(r => r.length));
+
+  // Build beautiful, textbook-style HTML table
+  let html = `<div class="my-4 overflow-x-auto flex justify-center">
+    <table class="border-collapse border-2 border-slate-700 bg-white text-xs sm:text-sm font-sans shadow-md rounded-2xl overflow-hidden my-2 border-spacing-0">
+      <tbody>`;
+
+  parsedRows.forEach((row, rowIdx) => {
+    // Pad row with empty cells if shorter than maxCols
+    while (row.length < maxCols) {
+      row.push('');
+    }
+
+    const isFirstRow = rowIdx === 0;
+    const isSecondRow = rowIdx === 1;
+    const hasBottomBorder = isFirstRow || isSecondRow || rowIdx === parsedRows.length - 1;
+
+    html += `<tr class="${hasBottomBorder ? 'border-b-2 border-slate-700' : ''} hover:bg-slate-50/50">`;
+
+    row.forEach((cell, colIdx) => {
+      const isHeaderCol = colIdx === 0;
+      let cellContent = cell.trim();
+
+      // Convert arrows
+      if (cellContent.includes('\\nearrow') || cellContent === '↗' || cellContent.includes('nearrow')) {
+        cellContent = '<span class="text-indigo-600 font-black text-base sm:text-xl inline-block transform hover:scale-110 transition-transform">↗</span>';
+      } else if (cellContent.includes('\\searrow') || cellContent === '↘' || cellContent.includes('searrow')) {
+        cellContent = '<span class="text-indigo-600 font-black text-base sm:text-xl inline-block transform hover:scale-110 transition-transform">↘</span>';
+      } else if (cellContent.includes('\\rightarrow') || cellContent === '→' || cellContent.includes('rightarrow')) {
+        cellContent = '<span class="text-indigo-600 font-black text-base sm:text-lg">→</span>';
+      } else if (cellContent === '||' || cellContent === '\\|\\|' || cellContent === '|') {
+        cellContent = '<span class="text-slate-400 font-black tracking-tighter text-sm">||</span>';
+      } else if (cellContent === '+' || cellContent === '$+$') {
+        cellContent = '<span class="text-blue-600 font-black text-sm sm:text-base">+</span>';
+      } else if (cellContent === '-' || cellContent === '$-$' || cellContent === '−') {
+        cellContent = '<span class="text-rose-600 font-black text-sm sm:text-base">−</span>';
+      } else if (cellContent === '0' || cellContent === '$0$') {
+        cellContent = '<span class="text-slate-800 font-bold">0</span>';
+      } else if (cellContent) {
+        // Render math for numbers, variables, expressions
+        try {
+          cellContent = katex.renderToString(cellContent, {
+            displayMode: false,
+            throwOnError: false,
+            strict: false,
+            trust: true,
+            output: 'html'
+          });
+        } catch {
+          cellContent = escapeHtml(cellContent);
+        }
+      }
+
+      if (isHeaderCol) {
+        html += `<td class="border-r-2 border-slate-700 bg-slate-100/90 font-black text-slate-800 px-3 sm:px-4 py-2.5 text-center whitespace-nowrap">${cellContent}</td>`;
+      } else {
+        html += `<td class="px-2.5 sm:px-4 py-2 text-center text-slate-850 font-medium min-w-[2.4rem] sm:min-w-[3rem]">${cellContent}</td>`;
+      }
+    });
+
+    html += '</tr>';
+  });
+
+  html += '</tbody></table></div>';
+  return html;
+}
+
 export const MathRenderer: React.FC<MathRendererProps> = ({ content, className = '', inline = false }) => {
   const renderedHtml = useMemo(() => {
     if (!content) return '';
@@ -96,9 +192,16 @@ export const MathRenderer: React.FC<MathRendererProps> = ({ content, className =
         // 2. Block math: $$...$$ (including variation tables and matrices)
         if (part.startsWith('$$') && part.endsWith('$$') && part.length >= 4) {
           const rawMath = part.slice(2, -2).trim();
+
+          // Check if this block is a variation table or array table
+          if (rawMath.includes('\\begin{array}') || rawMath.includes('\\begin{tabular}') || (rawMath.includes('&') && rawMath.includes('\\\\'))) {
+            return renderLatexTableToHtml(rawMath);
+          }
+
           try {
-            const isArrayTable = rawMath.includes('\\begin{array}');
-            const mathHtml = katex.renderToString(rawMath, {
+            // Strip inner $ if any
+            const cleanMath = rawMath.replace(/\$/g, '');
+            const mathHtml = katex.renderToString(cleanMath, {
               displayMode: true,
               throwOnError: false,
               strict: false,
@@ -106,9 +209,6 @@ export const MathRenderer: React.FC<MathRendererProps> = ({ content, className =
               output: 'html'
             });
 
-            if (isArrayTable) {
-              return `<div class="my-3 overflow-x-auto p-3 bg-slate-50/80 rounded-2xl border border-slate-200/80 shadow-2xs text-center">${mathHtml}</div>`;
-            }
             return `<div class="my-2 overflow-x-auto py-1 text-center">${mathHtml}</div>`;
           } catch {
             return `<div class="katex-error text-rose-500 font-mono text-xs my-1 p-2 bg-rose-50 rounded-lg">[Lỗi công thức: ${escapeHtml(rawMath)}]</div>`;
@@ -119,7 +219,8 @@ export const MathRenderer: React.FC<MathRendererProps> = ({ content, className =
         if (part.startsWith('$') && part.endsWith('$') && part.length >= 2) {
           const rawMath = part.slice(1, -1).trim();
           try {
-            return katex.renderToString(rawMath, {
+            const cleanMath = rawMath.replace(/\$/g, '');
+            return katex.renderToString(cleanMath, {
               displayMode: false,
               throwOnError: false,
               strict: false,
@@ -131,7 +232,11 @@ export const MathRenderer: React.FC<MathRendererProps> = ({ content, className =
           }
         }
 
-        // 4. Plain text: preserve line breaks and escape HTML
+        // 4. Plain text: check if plain text has un-delimited tabular or array
+        if (part.includes('\\begin{tabular}') || part.includes('\\begin{array}')) {
+          return renderLatexTableToHtml(part);
+        }
+
         return escapeHtml(part).replace(/\n/g, '<br/>');
       });
 
