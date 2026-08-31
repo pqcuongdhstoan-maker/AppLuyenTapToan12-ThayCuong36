@@ -56,16 +56,27 @@ export interface User {
   updatedAt?: string;
 }
 
+export interface ContentBlock {
+  type: 'text' | 'math' | 'image' | 'warning';
+  value?: string;           // Plain text
+  latex?: string;           // LaTeX math string (e.g. f(x), \mathbb{R})
+  url?: string;             // Image URL / Data URL (PNG, SVG, JPG)
+  alt?: string;             // Image label / caption
+  warningMessage?: string;  // Warning description when an object could not be converted cleanly
+}
+
 export interface QuestionOption {
   id: string; // 'A' | 'B' | 'C' | 'D'
   content: string;
+  contentBlocks?: ContentBlock[];
 }
 
 export interface TrueFalseItem {
   id: string; // 'a' | 'b' | 'c' | 'd'
   content: string;
-  correctAnswer: boolean; // true = Đúng, false = Sai
+  correctAnswer?: boolean; // true = Đúng, false = Sai, undefined = Chưa xác định
   explanation?: string;
+  contentBlocks?: ContentBlock[];
 }
 
 export interface ShortAnswerConfig {
@@ -84,15 +95,17 @@ export interface Question {
   type: QuestionType;
   difficulty: DifficultyLevel;
   content: string; // May contain LaTeX math: $...$ or $$...$$
+  contentBlocks?: ContentBlock[]; // Rich content blocks in original sequential order
   options?: QuestionOption[]; // For Part I
-  correctOption?: string | string[]; // 'A' or ['A', 'B'] for Part I
+  correctOption?: string | string[] | null; // 'A' or null if unassigned
   trueFalseItems?: TrueFalseItem[]; // For Part II
   shortAnswerConfig?: ShortAnswerConfig; // For Part III
   essayGuide?: string; // For Part IV: Suggested rubric/solution for teacher
   solution?: string; // Detailed solution explanation
+  solutionBlocks?: ContentBlock[];
   points: number; // Max points for this question (default 0.25 for Part I, 1.0 for Part II, 0.5 for Part III, 1-2 for Part IV)
   imageUrl?: string;
-  needsTeacherCheck?: boolean; // Flagged when formula extraction had low confidence
+  needsTeacherCheck?: boolean; // Flagged when formula extraction had low confidence or warnings
   topic?: string;
 }
 

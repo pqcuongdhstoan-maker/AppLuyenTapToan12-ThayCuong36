@@ -39,13 +39,56 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
   const [editingContent, setEditingContent] = useState('');
   const [editingSolution, setEditingSolution] = useState('');
   const [editingOptions, setEditingOptions] = useState<QuestionOption[]>([]);
-  const [editingCorrectOption, setEditingCorrectOption] = useState<string>('A');
+  const [editingCorrectOption, setEditingCorrectOption] = useState<string | null>('A');
   const [editingTrueFalseItems, setEditingTrueFalseItems] = useState<TrueFalseItem[]>([]);
   const [editingShortAnswer, setEditingShortAnswer] = useState<string>('');
   const [editingImageUrl, setEditingImageUrl] = useState<string>('');
   const [timeLimit, setTimeLimit] = useState(45);
 
   if (!isOpen || !parsedData) return null;
+
+  // Live validation calculation
+  const liveIssues = useMemo(() => {
+    const issues: { questionNumber: number; message: string; severity: 'error' | 'warning' }[] = [];
+
+    questions.forEach((q, idx) => {
+      const qNum = idx + 1;
+      if (!q.content || !q.content.trim()) {
+        issues.push({ questionNumber: qNum, message: `Câu ${qNum}: Nội dung câu hỏi bị trống`, severity: 'error' });
+      }
+
+      if (q.part === 1) {
+        if (!q.options || q.options.length < 2) {
+          issues.push({ questionNumber: qNum, message: `Câu ${qNum}: Thiếu các phương án lựa chọn A, B, C, D`, severity: 'error' });
+        } else if (q.options.some(o => !o.content || !o.content.trim())) {
+          issues.push({ questionNumber: qNum, message: `Câu ${qNum}: Có phương án lựa chọn bị trống nội dung`, severity: 'error' });
+        }
+        if (!q.correctOption) {
+          issues.push({ questionNumber: qNum, message: `Câu ${qNum}: Chưa chọn đáp án đúng (A, B, C hoặc D)`, severity: 'error' });
+        }
+      } else if (q.part === 2) {
+        if (!q.trueFalseItems || q.trueFalseItems.length < 2) {
+          issues.push({ questionNumber: qNum, message: `Câu ${qNum}: Thiếu các mệnh đề a, b, c, d`, severity: 'error' });
+        } else if (q.trueFalseItems.some(i => i.correctAnswer === undefined)) {
+          issues.push({ questionNumber: qNum, message: `Câu ${qNum}: Chưa xác định tính Đúng/Sai cho một số mệnh đề`, severity: 'warning' });
+        }
+      } else if (q.part === 3) {
+        if (!q.shortAnswerConfig?.correctAnswers || q.shortAnswerConfig.correctAnswers.length === 0 || !q.shortAnswerConfig.correctAnswers[0]) {
+          issues.push({ questionNumber: qNum, message: `Câu ${qNum}: Chưa có đáp số trả lời ngắn`, severity: 'error' });
+        }
+      }
+
+      // Check for unconvertible warning blocks
+      if (q.contentBlocks?.some(b => b.type === 'warning')) {
+        issues.push({ questionNumber: qNum, message: `Câu ${qNum}: Có đối tượng công thức/hình ảnh cần kiểm tra lại`, severity: 'warning' });
+      }
+    });
+
+    return issues;
+  }, [questions]);
+
+  const errorCount = liveIssues.filter(i => i.severity === 'error').length;
+  const warningCount = liveIssues.filter(i => i.severity === 'warning').length;
 
   const handleStartEdit = (q: Question) => {
     setEditingQuestionId(q.id);
@@ -78,8 +121,9 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
           options: q.part === 1 ? editingOptions : q.options,
           correctOption: q.part === 1 ? editingCorrectOption : q.correctOption,
           trueFalseItems: q.part === 2 ? editingTrueFalseItems : q.trueFalseItems,
-          shortAnswerConfig: q.part === 3 ? { correctAnswers: [editingShortAnswer.trim()] } : q.shortAnswerConfig,
-          imageUrl: editingImageUrl || undefined
+          shortAnswerConfig: q.part === 3 ? { correctAnswers: [editingShortAnswer.trim()].filter(Boolean) } : q.shortAnswerConfig,
+          imageUrl: editingImageUrl || undefined,
+          needsTeacherCheck: false
         };
       }
       return q;
@@ -101,6 +145,11 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
   };
 
   const handlePublish = () => {
+    if (errorCount > 0) {
+      alert(`Đề thi vẫn còn ${errorCount} lỗi cần xử lý trước khi xuất bản. Vui lòng bấm "Sửa câu hỏi" để hoàn thiện đáp án/nội dung.`);
+      return;
+    }
+
     const existingExam = storageService.getExamByLessonId(lesson.id);
     const newVersion = existingExam ? existingExam.currentVersion + 1 : 1;
 
@@ -147,15 +196,22 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
   const p3Count = questions.filter((q) => q.part === 3).length;
   const p4Count = questions.filter((q) => q.part === 4).length;
 
+  const stats = parsedData.stats || {
+    ommlCount: 0,
+    mathTypeCount: 0,
+    imageCount: 0,
+    failedConversionsCount: 0
+  };
+
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
-      <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-100 overflow-hidden">
+      <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-100 overflow-hidden">
         {/* Modal Header */}
         <div className="p-6 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
           <div>
             <div className="flex items-center gap-2 text-xs font-bold text-indigo-700 uppercase tracking-wider mb-1">
               <Sparkles className="w-4 h-4" />
-              <span>XEM TRƯỚC VÀ PHÊ DUYỆT ĐỀ THI (LATEX & 4 PHẦN)</span>
+              <span>XEM TRƯỚC VÀ PHÊ DUYỆT ĐỀ THI (LATEX & RICH BLOCKS)</span>
             </div>
             <h3 className="text-lg font-black text-slate-900">
               {parsedData.title || `Đề luyện tập: ${lesson.title}`}
@@ -173,40 +229,72 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
           </button>
         </div>
 
-        {/* Overview Stats Bar */}
-        <div className="px-6 py-3 bg-indigo-50/60 border-b border-indigo-100 flex flex-wrap items-center justify-between gap-4 text-xs">
-          <div className="flex items-center gap-3">
-            <span className="font-bold text-slate-700">Tổng số câu: {questions.length}</span>
-            <span className="text-slate-500">|</span>
-            <span className="text-slate-600">Phần I (TN): <strong>{p1Count}</strong></span>
-            <span className="text-slate-600">Phần II (Đ/S): <strong>{p2Count}</strong></span>
-            <span className="text-slate-600">Phần III (TLN): <strong>{p3Count}</strong></span>
-            <span className="text-slate-600">Phần IV (TL): <strong>{p4Count}</strong></span>
+        {/* Detailed Stats Overview Bar */}
+        <div className="px-6 py-2.5 bg-slate-100 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-2 text-slate-700">
+            <span className="font-bold">Tổng số: {questions.length} câu</span>
+            <span className="text-slate-300">|</span>
+            <span>Phần I: <strong>{p1Count}</strong></span>
+            <span>Phần II: <strong>{p2Count}</strong></span>
+            <span>Phần III: <strong>{p3Count}</strong></span>
+            <span>Phần IV: <strong>{p4Count}</strong></span>
+            <span className="text-slate-300">|</span>
+            <span className="text-blue-700 bg-blue-50 px-2 py-0.5 rounded">OMML: {stats.ommlCount}</span>
+            <span className="text-purple-700 bg-purple-50 px-2 py-0.5 rounded">MathType: {stats.mathTypeCount}</span>
+            <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">Ảnh: {stats.imageCount}</span>
+            {stats.failedConversionsCount > 0 && (
+              <span className="text-rose-700 bg-rose-50 px-2 py-0.5 rounded font-bold">Lỗi đối tượng: {stats.failedConversionsCount}</span>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-slate-700 font-semibold">Thời gian làm bài:</span>
+            <span className="text-slate-700 font-semibold">Thời gian:</span>
             <input
               type="number"
               min={10}
               max={180}
               value={timeLimit}
               onChange={(e) => setTimeLimit(Number(e.target.value))}
-              className="w-16 px-2 py-1 bg-white border border-slate-300 rounded-lg text-center font-bold text-slate-900"
+              className="w-14 px-2 py-1 bg-white border border-slate-300 rounded-lg text-center font-bold text-slate-900"
             />
             <span>phút</span>
           </div>
         </div>
 
+        {/* Validation Issues Alert Banner */}
+        {liveIssues.length > 0 && (
+          <div className={`px-6 py-2.5 border-b text-xs flex items-start gap-2.5 ${
+            errorCount > 0 ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-amber-50 border-amber-200 text-amber-800'
+          }`}>
+            <AlertTriangle className={`w-4 h-4 shrink-0 mt-0.5 ${errorCount > 0 ? 'text-rose-600' : 'text-amber-600'}`} />
+            <div className="flex-1">
+              <div className="font-bold">
+                {errorCount > 0 ? `Phát hiện ${errorCount} lỗi cần xử lý trước khi xuất bản đề thi:` : `Có ${warningCount} cảnh báo cần lưu ý:`}
+              </div>
+              <ul className="list-disc list-inside mt-1 space-y-0.5 text-[11px]">
+                {liveIssues.slice(0, 4).map((iss, i) => (
+                  <li key={i}>{iss.message}</li>
+                ))}
+                {liveIssues.length > 4 && (
+                  <li>...và {liveIssues.length - 4} vấn đề khác bên dưới</li>
+                )}
+              </ul>
+            </div>
+          </div>
+        )}
+
         {/* Scrollable Questions list */}
         <div className="p-6 overflow-y-auto space-y-4 flex-1">
           {questions.map((q, idx) => {
             const isEditing = editingQuestionId === q.id;
+            const hasError = !q.content.trim() || (q.part === 1 && !q.correctOption);
 
             return (
               <div
                 key={q.id}
-                className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3"
+                className={`bg-white rounded-2xl border p-5 shadow-xs space-y-3 transition-all ${
+                  hasError ? 'border-rose-300 ring-2 ring-rose-100' : 'border-slate-200'
+                }`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -220,6 +308,11 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
                       {q.part === 4 && 'Tự luận'}
                     </span>
                     <span className="text-xs text-slate-400">({q.points} điểm)</span>
+                    {q.part === 1 && !q.correctOption && (
+                      <span className="px-2 py-0.5 bg-rose-100 text-rose-700 text-[10px] font-extrabold rounded-md flex items-center gap-1">
+                        <AlertOctagon className="w-3 h-3" /> Chưa chọn đáp án
+                      </span>
+                    )}
                   </div>
 
                   {!isEditing ? (
@@ -254,13 +347,6 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
                       >
                         Hủy
                       </button>
-                      <button
-                        onClick={() => handleDeleteQuestion(q.id)}
-                        className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors"
-                        title="Xóa câu hỏi này"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
                     </div>
                   )}
                 </div>
@@ -268,7 +354,7 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
                 {isEditing ? (
                   <div className="space-y-4 pt-2 border-t border-slate-100">
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Nội dung câu hỏi (hỗ trợ MathType / LaTeX $...$):</label>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Nội dung câu hỏi (MathType / LaTeX $...$):</label>
                       <MathEditor
                         value={editingContent}
                         onChange={setEditingContent}
@@ -299,42 +385,36 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
 
                     {/* Part I: Edit 4 Options & Correct Answer Radio */}
                     {q.part === 1 && (
-                      <div className="space-y-2 pt-1">
-                        <label className="block text-xs font-bold text-slate-700">
-                          Các phương án A, B, C, D (Nhấp nút tròn để chọn đáp án đúng):
-                        </label>
+                      <div className="space-y-2">
+                        <label className="block text-xs font-bold text-slate-700">Các phương án và chọn đáp án đúng:</label>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {editingOptions.map((opt, optIdx) => (
+                          {editingOptions.map((opt, oIdx) => (
                             <div
                               key={opt.id}
-                              className={`p-2.5 rounded-xl border flex items-center gap-2 transition-all ${
-                                editingCorrectOption === opt.id
-                                  ? 'bg-emerald-50/80 border-emerald-400 shadow-2xs'
+                              className={`p-2.5 rounded-xl border flex items-center gap-2 ${
+                                opt.id === editingCorrectOption
+                                  ? 'bg-emerald-50 border-emerald-300'
                                   : 'bg-slate-50 border-slate-200'
                               }`}
                             >
-                              <button
-                                type="button"
-                                onClick={() => setEditingCorrectOption(opt.id)}
-                                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black shrink-0 cursor-pointer transition-all ${
-                                  editingCorrectOption === opt.id
-                                    ? 'bg-emerald-600 text-white shadow-xs'
-                                    : 'bg-slate-200 text-slate-700 hover:bg-emerald-200'
-                                }`}
-                                title={`Chọn ${opt.id} là đáp án đúng`}
-                              >
-                                {opt.id}
-                              </button>
+                              <input
+                                type="radio"
+                                name={`correct_opt_${q.id}`}
+                                checked={opt.id === editingCorrectOption}
+                                onChange={() => setEditingCorrectOption(opt.id)}
+                                className="w-4 h-4 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                              />
+                              <span className="font-bold text-xs">{opt.id}.</span>
                               <input
                                 type="text"
                                 value={opt.content}
                                 onChange={(e) => {
                                   const updated = [...editingOptions];
-                                  updated[optIdx] = { ...opt, content: e.target.value };
+                                  updated[oIdx] = { ...opt, content: e.target.value };
                                   setEditingOptions(updated);
                                 }}
+                                className="flex-1 px-2 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:border-indigo-500 focus:outline-none"
                                 placeholder={`Nội dung phương án ${opt.id}...`}
-                                className="w-full px-2.5 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:border-indigo-500 focus:outline-none font-medium"
                               />
                             </div>
                           ))}
@@ -344,16 +424,12 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
 
                     {/* Part II: Edit True/False Items */}
                     {q.part === 2 && (
-                      <div className="space-y-2 pt-1">
-                        <label className="block text-xs font-bold text-slate-700">
-                          Các mệnh đề a, b, c, d (Bấm nút ĐÚNG/SAI để chuyển trạng thái):
-                        </label>
+                      <div className="space-y-2">
+                        <label className="block text-xs font-bold text-slate-700">Các mệnh đề và tính Đúng / Sai:</label>
                         <div className="space-y-2">
                           {editingTrueFalseItems.map((tf, tfIdx) => (
                             <div key={tf.id} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-2">
-                              <span className="font-black text-xs uppercase text-slate-800 w-5 text-center shrink-0">
-                                {tf.id})
-                              </span>
+                              <span className="font-bold uppercase text-xs w-6">{tf.id})</span>
                               <input
                                 type="text"
                                 value={tf.content}
@@ -362,24 +438,41 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
                                   updated[tfIdx] = { ...tf, content: e.target.value };
                                   setEditingTrueFalseItems(updated);
                                 }}
-                                placeholder={`Mệnh đề ${tf.id}...`}
-                                className="flex-1 px-2.5 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:border-indigo-500 focus:outline-none"
+                                className="flex-1 px-2 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:border-indigo-500 focus:outline-none"
+                                placeholder={`Nội dung ý ${tf.id}...`}
                               />
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const updated = [...editingTrueFalseItems];
-                                  updated[tfIdx] = { ...tf, correctAnswer: !tf.correctAnswer };
-                                  setEditingTrueFalseItems(updated);
-                                }}
-                                className={`px-3 py-1 rounded-lg text-xs font-black cursor-pointer transition-all ${
-                                  tf.correctAnswer
-                                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs'
-                                    : 'bg-rose-600 hover:bg-rose-700 text-white shadow-2xs'
-                                }`}
-                              >
-                                {tf.correctAnswer ? 'ĐÚNG' : 'SAI'}
-                              </button>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = [...editingTrueFalseItems];
+                                    updated[tfIdx] = { ...tf, correctAnswer: true };
+                                    setEditingTrueFalseItems(updated);
+                                  }}
+                                  className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-colors ${
+                                    tf.correctAnswer === true
+                                      ? 'bg-emerald-600 text-white shadow-xs'
+                                      : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                                  }`}
+                                >
+                                  Đúng
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = [...editingTrueFalseItems];
+                                    updated[tfIdx] = { ...tf, correctAnswer: false };
+                                    setEditingTrueFalseItems(updated);
+                                  }}
+                                  className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-colors ${
+                                    tf.correctAnswer === false
+                                      ? 'bg-rose-600 text-white shadow-xs'
+                                      : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                                  }`}
+                                >
+                                  Sai
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -388,20 +481,20 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
 
                     {/* Part III: Edit Short Answer */}
                     {q.part === 3 && (
-                      <div className="space-y-1 pt-1">
-                        <label className="block text-xs font-bold text-slate-700">Đáp án số chính xác:</label>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Đáp số đúng (số, phân số, tọa độ):</label>
                         <input
                           type="text"
                           value={editingShortAnswer}
                           onChange={(e) => setEditingShortAnswer(e.target.value)}
-                          placeholder="Ví dụ: 3, 19/3, 2.5..."
-                          className="w-full sm:w-64 px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-xl font-bold text-indigo-700 focus:border-indigo-500 focus:outline-none"
+                          placeholder="Ví dụ: -199 hoặc 3/4 hoặc 0.75"
+                          className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:border-indigo-500 focus:outline-none font-bold"
                         />
                       </div>
                     )}
 
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Lời giải chi tiết / Hướng dẫn chấm (LaTeX):</label>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Lời giải chi tiết (LaTeX):</label>
                       <MathEditor
                         value={editingSolution}
                         onChange={setEditingSolution}
@@ -413,7 +506,7 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
                 ) : (
                   <>
                     <div className="text-sm text-slate-900 leading-relaxed font-medium">
-                      <MathRenderer content={q.content} />
+                      <MathRenderer blocks={q.contentBlocks} content={q.content} />
                     </div>
 
                     {q.imageUrl && (
@@ -435,7 +528,7 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
                             }`}
                           >
                             <span className="font-black">{opt.id}.</span>
-                            <MathRenderer content={opt.content} />
+                            <MathRenderer blocks={opt.contentBlocks} content={opt.content} />
                           </div>
                         ))}
                       </div>
@@ -451,12 +544,16 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
                           >
                             <div className="flex items-center gap-2">
                               <span className="font-bold uppercase text-slate-800">{item.id})</span>
-                              <MathRenderer content={item.content} />
+                              <MathRenderer blocks={item.contentBlocks} content={item.content} />
                             </div>
                             <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
-                              item.correctAnswer ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+                              item.correctAnswer === true
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : item.correctAnswer === false
+                                ? 'bg-rose-100 text-rose-700'
+                                : 'bg-amber-100 text-amber-700'
                             }`}>
-                              {item.correctAnswer ? 'ĐÚNG' : 'SAI'}
+                              {item.correctAnswer === true ? 'ĐÚNG' : item.correctAnswer === false ? 'SAI' : 'CHƯA XÁC ĐỊNH'}
                             </span>
                           </div>
                         ))}
@@ -466,7 +563,7 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
                     {/* Part III Short Answer */}
                     {q.part === 3 && q.shortAnswerConfig && (
                       <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700">
-                        Đáp án đúng: <strong>{q.shortAnswerConfig.correctAnswers.join(' hoặc ')}</strong>
+                        Đáp án đúng: <strong>{q.shortAnswerConfig.correctAnswers.join(' hoặc ') || '(Chưa có)'}</strong>
                       </div>
                     )}
 
@@ -493,13 +590,26 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
             Hủy bỏ
           </button>
 
-          <button
-            onClick={handlePublish}
-            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-2"
-          >
-            <CheckCircle className="w-4 h-4" />
-            XUẤT BẢN ĐỀ THI MỚI (PHIÊN BẢN CHÍNH THỨC)
-          </button>
+          <div className="flex items-center gap-3">
+            {errorCount > 0 && (
+              <span className="text-xs text-rose-600 font-bold flex items-center gap-1">
+                <AlertOctagon className="w-4 h-4" /> Còn {errorCount} lỗi cần sửa
+              </span>
+            )}
+
+            <button
+              onClick={handlePublish}
+              disabled={errorCount > 0}
+              className={`px-6 py-2.5 font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 ${
+                errorCount > 0
+                  ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                  : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200'
+              }`}
+            >
+              <CheckCircle className="w-4 h-4" />
+              XUẤT BẢN ĐỀ THI MỚI (PHIÊN BẢN CHÍNH THỨC)
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -1,6 +1,24 @@
 import JSZip from 'jszip';
-import { Question, QuestionType, DifficultyLevel, QuestionOption, TrueFalseItem } from '../types';
+import { Question, QuestionType, DifficultyLevel, QuestionOption, TrueFalseItem, ContentBlock } from '../types';
 import { decodeMtefToLatex } from './mtefDecoder';
+import { convertWmfToSvgDataUrl } from './wmfDecoder';
+
+export interface DocxValidationIssue {
+  questionIndex: number;
+  message: string;
+  severity: 'error' | 'warning';
+}
+
+export interface DocxParseStats {
+  part1Count: number;
+  part2Count: number;
+  part3Count: number;
+  part4Count: number;
+  ommlCount: number;
+  mathTypeCount: number;
+  imageCount: number;
+  failedConversionsCount: number;
+}
 
 export interface DocxParseResult {
   title: string;
@@ -8,6 +26,8 @@ export interface DocxParseResult {
   rawText: string;
   warnings: string[];
   hasUnconfidentFormulas: boolean;
+  stats: DocxParseStats;
+  validationIssues: DocxValidationIssue[];
 }
 
 export type DocxParsedExam = DocxParseResult;
@@ -270,7 +290,7 @@ function getAttr(el: Element, attrName: string): string | null {
 }
 
 /**
- * Parses a Word .docx file ArrayBuffer or File into structured Questions
+ * Parses a Word .docx file ArrayBuffer or File into structured Questions with rich content blocks
  */
 export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxParseResult> {
   let zip: JSZip;
@@ -290,9 +310,15 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
   const xmlDoc = parser.parseFromString(docXmlText, 'application/xml');
 
   const warnings: string[] = [];
+  const validationIssues: DocxValidationIssue[] = [];
   let hasUnconfidentFormulas = false;
 
-  // Extract embedded media images map (rId -> base64) and OLE MathType map (rId -> LaTeX)
+  let ommlCount = 0;
+  let mathTypeCount = 0;
+  let imageCount = 0;
+  let failedConversionsCount = 0;
+
+  // Extract embedded media images map (rId -> dataUrl) and OLE MathType map (rId -> LaTeX)
   const imageMap: { [relId: string]: string } = {};
   const oleMap: { [relId: string]: string } = {};
 
@@ -315,10 +341,21 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
             const imageFile = zip.file(cleanTarget) || zip.file(target);
             if (imageFile) {
               const ext = target.split('.').pop()?.toLowerCase() || 'png';
-              // Only load browser-supported image formats into imageMap
               if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) {
                 const base64 = await imageFile.async('base64');
                 imageMap[id] = `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,${base64}`;
+                imageCount++;
+              } else if (['wmf', 'emf'].includes(ext)) {
+                try {
+                  const wmfBuf = await imageFile.async('arraybuffer');
+                  const svgData = convertWmfToSvgDataUrl(wmfBuf);
+                  if (svgData) {
+                    imageMap[id] = svgData;
+                    imageCount++;
+                  }
+                } catch (e) {
+                  console.warn('WMF/EMF convert warning:', e);
+                }
               }
             }
           } else if (type.includes('oleObject') || target.endsWith('.bin') || target.includes('embeddings')) {
@@ -329,9 +366,13 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
                 const latex = decodeMtefToLatex(binBuffer);
                 if (latex) {
                   oleMap[id] = latex;
+                  mathTypeCount++;
+                } else {
+                  failedConversionsCount++;
                 }
               } catch (err) {
                 console.warn('MTEF decode error for rel:', id, err);
+                failedConversionsCount++;
               }
             }
           }
@@ -362,29 +403,42 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
   }
 
   const body = findChildrenByTag(xmlDoc.documentElement, 'body')[0] || xmlDoc.documentElement;
-  const extractedLines: { text: string; image?: string; hasLowConfidenceMath?: boolean }[] = [];
 
-  function processRunOrElement(el: Element): { text: string; image?: string; hasLowConfidenceMath?: boolean } {
+  interface ProcessedItem {
+    text: string;
+    blocks: ContentBlock[];
+    isBold?: boolean;
+    isUnderlined?: boolean;
+    hasLowConfidenceMath?: boolean;
+  }
+
+  function processRunOrElement(el: Element): ProcessedItem {
     let pText = '';
-    let pImage: string | undefined = undefined;
+    const pBlocks: ContentBlock[] = [];
     let pLowConfidence = false;
+    let isBold = false;
+    let isUnderlined = false;
 
     const tag = (el.localName || el.nodeName.replace(/^.*:/, '')).toLowerCase();
 
     // 1. OMML Math (<m:oMath>, <m:oMathPara>)
     if (tag === 'omath' || tag === 'omathpara') {
+      ommlCount++;
       const { latex, confident } = convertOmmlToLatex(el);
       if (!confident) {
         pLowConfidence = true;
         hasUnconfidentFormulas = true;
       }
       pText += ` $${latex}$ `;
-      return { text: pText, image: pImage, hasLowConfidenceMath: pLowConfidence };
+      pBlocks.push({ type: 'math', latex });
+      return { text: pText, blocks: pBlocks, hasLowConfidenceMath: pLowConfidence };
     }
 
     // 2. MathType OLE Object (<w:object>)
     if (tag === 'object') {
       const oleNodes = findChildrenByTag(el, 'OLEObject');
+      let foundMath = false;
+
       for (let o = 0; o < oleNodes.length; o++) {
         const rId = getAttr(oleNodes[o], 'id') || '';
         const shapeId = getAttr(oleNodes[o], 'ShapeID') || '';
@@ -401,11 +455,37 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
 
         if (latex) {
           pText += ` $${latex}$ `;
+          pBlocks.push({ type: 'math', latex });
+          foundMath = true;
         }
       }
 
-      // Do NOT set pImage from object (WMF previews should never replace question illustrations)
-      return { text: pText, image: pImage, hasLowConfidenceMath: pLowConfidence };
+      if (!foundMath) {
+        // Check if there is an image preview in v:imagedata
+        const vImgs = findChildrenByTag(el, 'imagedata');
+        let previewFound = false;
+        for (let v = 0; v < vImgs.length; v++) {
+          const imgId = getAttr(vImgs[v], 'id') || getAttr(vImgs[v], 'href');
+          if (imgId && imageMap[imgId]) {
+            pBlocks.push({ type: 'image', url: imageMap[imgId], alt: 'Công thức MathType' });
+            pBlocks.push({
+              type: 'warning',
+              warningMessage: 'Công thức MathType được nhập dưới dạng hình ảnh – cần giáo viên kiểm tra'
+            });
+            previewFound = true;
+            break;
+          }
+        }
+        if (!previewFound) {
+          failedConversionsCount++;
+          pBlocks.push({
+            type: 'warning',
+            warningMessage: 'Đối tượng MathType OLE không thể giải mã – vui lòng kiểm tra lại'
+          });
+        }
+      }
+
+      return { text: pText, blocks: pBlocks, hasLowConfidenceMath: pLowConfidence };
     }
 
     // 3. VML Picture (<w:pict>)
@@ -414,10 +494,10 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
       for (let v = 0; v < vImgs.length; v++) {
         const imgId = getAttr(vImgs[v], 'id') || getAttr(vImgs[v], 'href');
         if (imgId && imageMap[imgId]) {
-          pImage = imageMap[imgId];
+          pBlocks.push({ type: 'image', url: imageMap[imgId], alt: 'Hình minh họa' });
         }
       }
-      return { text: pText, image: pImage, hasLowConfidenceMath: pLowConfidence };
+      return { text: pText, blocks: pBlocks, hasLowConfidenceMath: pLowConfidence };
     }
 
     // 4. Drawing (<w:drawing>)
@@ -426,36 +506,44 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
       for (let b = 0; b < blipNodes.length; b++) {
         const embedId = getAttr(blipNodes[b], 'embed') || getAttr(blipNodes[b], 'id');
         if (embedId && imageMap[embedId]) {
-          pImage = imageMap[embedId];
+          pBlocks.push({ type: 'image', url: imageMap[embedId], alt: 'Hình minh họa' });
         }
       }
-      return { text: pText, image: pImage, hasLowConfidenceMath: pLowConfidence };
+      return { text: pText, blocks: pBlocks, hasLowConfidenceMath: pLowConfidence };
     }
 
     // 5. Standard Text Node (<w:t>)
     if (tag === 't') {
-      pText += el.textContent || '';
-      return { text: pText, image: pImage, hasLowConfidenceMath: pLowConfidence };
+      const txt = el.textContent || '';
+      pText += txt;
+      if (txt) pBlocks.push({ type: 'text', value: txt });
+      return { text: pText, blocks: pBlocks, hasLowConfidenceMath: pLowConfidence };
     }
 
     // 6. Run (<w:r>)
     if (tag === 'r') {
-      const isUnderlined = findChildrenByTag(el, 'u').length > 0;
+      isUnderlined = findChildrenByTag(el, 'u').length > 0;
+      isBold = findChildrenByTag(el, 'b').length > 0;
+
       let runText = '';
+      const runBlocks: ContentBlock[] = [];
+
       for (let c = 0; c < el.childNodes.length; c++) {
         const child = el.childNodes[c] as Element;
         if (child && child.nodeType === 1) {
           const res = processRunOrElement(child);
           if (res.text) runText += res.text;
-          if (res.image && !pImage) pImage = res.image;
+          runBlocks.push(...res.blocks);
           if (res.hasLowConfidenceMath) pLowConfidence = true;
         }
       }
+
       if (isUnderlined && runText.trim()) {
         runText = `<u>${runText}</u>`;
       }
       pText += runText;
-      return { text: pText, image: pImage, hasLowConfidenceMath: pLowConfidence };
+      pBlocks.push(...runBlocks);
+      return { text: pText, blocks: pBlocks, isBold, isUnderlined, hasLowConfidenceMath: pLowConfidence };
     }
 
     // 7. Other Container Elements
@@ -464,22 +552,23 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
       if (child && child.nodeType === 1) {
         const res = processRunOrElement(child);
         if (res.text) pText += res.text;
-        if (res.image && !pImage) pImage = res.image;
+        pBlocks.push(...res.blocks);
         if (res.hasLowConfidenceMath) pLowConfidence = true;
+        if (res.isBold) isBold = true;
+        if (res.isUnderlined) isUnderlined = true;
       }
     }
 
-    return { text: pText, image: pImage, hasLowConfidenceMath: pLowConfidence };
+    return { text: pText, blocks: pBlocks, isBold, isUnderlined, hasLowConfidenceMath: pLowConfidence };
   }
 
-  function processParagraph(p: Element): { text: string; image?: string; hasLowConfidenceMath?: boolean } {
-    const res = processRunOrElement(p);
-    return { text: res.text.trim(), image: res.image, hasLowConfidenceMath: res.hasLowConfidenceMath };
+  function processParagraph(p: Element): ProcessedItem {
+    return processRunOrElement(p);
   }
 
-  function processTable(tbl: Element): { text: string } {
+  function processTable(tbl: Element): ProcessedItem {
     const rows = findChildrenByTag(tbl, 'tr');
-    if (rows.length === 0) return { text: '' };
+    if (rows.length === 0) return { text: '', blocks: [] };
 
     const tableRows: string[] = [];
     let maxCols = 0;
@@ -497,8 +586,13 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
 
     const colAlign = '|' + Array(maxCols || 1).fill('c').join('|') + '|';
     const latexTable = `$$\n\\begin{array}{${colAlign}}\n\\hline\n${tableRows.join('\n')}\n\\end{array}\n$$`;
-    return { text: latexTable };
+    return {
+      text: latexTable,
+      blocks: [{ type: 'math', latex: `\\begin{array}{${colAlign}}\n\\hline\n${tableRows.join('\n')}\n\\end{array}` }]
+    };
   }
+
+  const extractedLines: ProcessedItem[] = [];
 
   if (body) {
     for (let i = 0; i < body.childNodes.length; i++) {
@@ -508,37 +602,25 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
 
       if (tag === 'p') {
         const res = processParagraph(el);
-        if (res.text || res.image) {
+        if (res.text.trim() || res.blocks.length > 0) {
           extractedLines.push(res);
         }
       } else if (tag === 'tbl') {
         const res = processTable(el);
-        if (res.text) {
-          extractedLines.push({ text: res.text });
+        if (res.text.trim() || res.blocks.length > 0) {
+          extractedLines.push(res);
         }
-      }
-    }
-  } else {
-    // Fallback
-    const paragraphs = xmlDoc.getElementsByTagName('w:p');
-    for (let i = 0; i < paragraphs.length; i++) {
-      const res = processParagraph(paragraphs[i]);
-      if (res.text || res.image) {
-        extractedLines.push(res);
       }
     }
   }
 
-  // Filter and segment extractedLines into Parts and Questions
   const fullText = extractedLines.map(l => l.text).join('\n');
   const questions: Question[] = [];
 
   let currentPart: 1 | 2 | 3 | 4 = 1;
   let qNum = 1;
 
-  // Split lines and group into questions
-  let currentQuestionLines: string[] = [];
-  let currentImages: string[] = [];
+  let currentQuestionLines: ProcessedItem[] = [];
   let currentNeedsCheck = false;
   let hasStartedFirstQuestion = false;
 
@@ -552,6 +634,8 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
       t.includes('trong mỗi ý a), b), c), d)') ||
       t.includes('trong mỗi ý a, b, c, d') ||
       t.includes('thí sinh ghi câu trả lời') ||
+      t.includes('học sinh tô vào ô') ||
+      t.includes('học sinh ghi đáp án') ||
       t.includes('thời gian làm bài') ||
       t.includes('bộ giáo dục và đào tạo') ||
       t.includes('sở giáo dục và đào tạo') ||
@@ -566,60 +650,50 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
   const saveCurrentDraft = () => {
     if (currentQuestionLines.length === 0) return;
 
-    const rawBlock = currentQuestionLines.join('\n').trim();
+    const rawBlock = currentQuestionLines.map(l => l.text).join('\n').trim();
     if (!rawBlock) return;
 
-    // Do not save if the block is solely instructions or exam header
     if (isInstructionOrExamHeader(rawBlock)) {
       currentQuestionLines = [];
-      currentImages = [];
       currentNeedsCheck = false;
       return;
     }
 
+    const allBlocks: ContentBlock[] = [];
+    currentQuestionLines.forEach(l => allBlocks.push(...l.blocks));
+
     const q = processQuestionBlock(
       rawBlock,
+      allBlocks,
       currentPart,
       qNum,
-      currentImages[0],
-      currentNeedsCheck
+      currentNeedsCheck,
+      validationIssues
     );
 
-    if (q && q.content.trim()) {
+    if (q) {
       questions.push(q);
       qNum++;
     }
 
-    // Reset draft
     currentQuestionLines = [];
-    currentImages = [];
     currentNeedsCheck = false;
   };
 
   for (const lineObj of extractedLines) {
     const line = lineObj.text.trim();
-    if (!line && !lineObj.image) continue;
-    const lower = line.toLowerCase();
+    if (!line && lineObj.blocks.length === 0) continue;
 
-    // Check for Section headers (PHẦN I, PHẦN II, PHẦN III, PHẦN IV)
-    if (lower.includes('phần i') || lower.includes('phan i') || lower.includes('phần 1')) {
+    // Strict Section Header Recognition: PHẦN I, PHẦN II, PHẦN III, PHẦN IV
+    const partMatch = line.match(/^\s*PHẦN\s+(IV|III|II|I|\d+)\b/i);
+    if (partMatch) {
       saveCurrentDraft();
-      currentPart = 1;
-      continue;
-    }
-    if (lower.includes('phần ii') || lower.includes('phan ii') || lower.includes('phần 2')) {
-      saveCurrentDraft();
-      currentPart = 2;
-      continue;
-    }
-    if (lower.includes('phần iii') || lower.includes('phan iii') || lower.includes('phần 3')) {
-      saveCurrentDraft();
-      currentPart = 3;
-      continue;
-    }
-    if (lower.includes('phần iv') || lower.includes('phan iv') || lower.includes('phần 4')) {
-      saveCurrentDraft();
-      currentPart = 4;
+      const numeral = partMatch[1].toUpperCase();
+      if (numeral === 'IV' || numeral === '4') currentPart = 4;
+      else if (numeral === 'III' || numeral === '3') currentPart = 3;
+      else if (numeral === 'II' || numeral === '2') currentPart = 2;
+      else currentPart = 1;
+      qNum = 1; // Restart numbering per section as required
       continue;
     }
 
@@ -630,17 +704,15 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
       saveCurrentDraft();
       hasStartedFirstQuestion = true;
     } else if (!hasStartedFirstQuestion) {
-      // Skip general instructions / exam cover text before Câu 1
+      // Skip general instructions / cover page
       continue;
     }
 
-    // Skip standalone instruction lines inside sections
     if (isInstructionOrExamHeader(line)) {
       continue;
     }
 
-    currentQuestionLines.push(line);
-    if (lineObj.image) currentImages.push(lineObj.image);
+    currentQuestionLines.push(lineObj);
     if (lineObj.hasLowConfidenceMath) currentNeedsCheck = true;
   }
 
@@ -650,36 +722,52 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
     warnings.push('Một số công thức toán có ký hiệu đặc biệt cần giáo viên kiểm tra lại trong màn hình xem trước.');
   }
 
+  const stats: DocxParseStats = {
+    part1Count: questions.filter(q => q.part === 1).length,
+    part2Count: questions.filter(q => q.part === 2).length,
+    part3Count: questions.filter(q => q.part === 3).length,
+    part4Count: questions.filter(q => q.part === 4).length,
+    ommlCount,
+    mathTypeCount,
+    imageCount,
+    failedConversionsCount
+  };
+
   return {
     title: 'Đề nhập từ file Word',
     questions,
     rawText: fullText,
     warnings,
-    hasUnconfidentFormulas
+    hasUnconfidentFormulas,
+    stats,
+    validationIssues
   };
 }
 
 /**
- * Helper to parse a single question block into a structured Question object
+ * Helper to parse a single question block into a structured Question object with rich ContentBlocks
  */
 function processQuestionBlock(
   block: string,
+  rawBlocks: ContentBlock[],
   part: 1 | 2 | 3 | 4,
   questionNumber: number,
-  imageUrl?: string,
-  needsTeacherCheck?: boolean
+  needsTeacherCheck: boolean,
+  validationIssues: DocxValidationIssue[]
 ): Question {
   const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
-  const firstLine = lines[0] || '';
 
   // Remove "Câu X." or "[Câu X]" from content
   let content = lines.join('\n');
   content = content.replace(/^(?:\[|\()? *(?:câu|cau|bài|bai|question) *\d+ *[\.\:\-\]\)]\s*/i, '').trim();
 
   let options: QuestionOption[] = [];
-  let correctOption: string | undefined = undefined;
+  let correctOption: string | null = null;
   let trueFalseItems: TrueFalseItem[] = [];
   let solution: string | undefined = undefined;
+
+  // Find image for backwards compatibility
+  const firstImage = rawBlocks.find(b => b.type === 'image')?.url;
 
   // Check for "Lời giải:" or "Hướng dẫn giải:"
   const solMatch = content.match(/(lời giải|hướng dẫn giải|hd giải|solution)[\:\.]([\s\S]*)$/i);
@@ -694,10 +782,14 @@ function processQuestionBlock(
     const matches = Array.from(content.matchAll(optRegex));
 
     if (matches.length >= 2) {
-      options = matches.slice(0, 4).map(m => ({
-        id: m[1].toUpperCase(),
-        content: m[2].replace(/<\/?u>/g, '').replace(/\n/g, ' ').trim()
-      }));
+      options = matches.slice(0, 4).map(m => {
+        const optText = m[2].replace(/<\/?u>/g, '').replace(/\n/g, ' ').trim();
+        return {
+          id: m[1].toUpperCase(),
+          content: optText,
+          contentBlocks: [{ type: 'text', value: optText }]
+        };
+      });
 
       // Strip options from main question content
       const firstOptIndex = content.search(/(?:^|\s|\t)(?:<u>)?[A-D](?:<\/u>)?[\.\:\)]/);
@@ -705,27 +797,38 @@ function processQuestionBlock(
         content = content.substring(0, firstOptIndex).trim();
       }
     } else {
-      // Default 4 fallback options if not detected cleanly
-      options = [
-        { id: 'A', content: 'Phương án A' },
-        { id: 'B', content: 'Phương án B' },
-        { id: 'C', content: 'Phương án C' },
-        { id: 'D', content: 'Phương án D' }
-      ];
+      validationIssues.push({
+        questionIndex: questionNumber,
+        message: `Phần I - Câu ${questionNumber}: Không tìm thấy đủ 4 phương án A, B, C, D`,
+        severity: 'error'
+      });
     }
 
-    // Detect underlined option for correct answer (e.g. <u>D</u>. or <u>D.</u>)
+    // Detect underlined/bold option for correct answer (e.g. <u>D</u>. or <u>D.</u>)
     const underlinedMatch = block.match(/<u>\s*([A-D])[\.\:\s]*<\/u>|<u>\s*([A-D])\s*<\/u>[\.\:\s]/i);
     if (underlinedMatch) {
       correctOption = (underlinedMatch[1] || underlinedMatch[2]).toUpperCase();
     } else {
-      // Guess correct option from solution or "(Chọn A)" or "Đáp án: A"
-      const ansMatch = (solution || block).match(/(?:chọn|đáp án|đáp án đúng|key|đa)[\:\s]*([A-D])\b/i);
+      // Look for explicit "ĐÁP ÁN: A" or "(Chọn A)"
+      const ansMatch = (solution || block).match(/(?:đáp án|đáp án đúng|chọn|key|đa)[\:\s]*([A-D])\b/i);
       if (ansMatch) {
         correctOption = ansMatch[1].toUpperCase();
       } else {
-        correctOption = 'A';
+        correctOption = null;
+        validationIssues.push({
+          questionIndex: questionNumber,
+          message: `Phần I - Câu ${questionNumber}: Chưa xác định được đáp án đúng`,
+          severity: 'error'
+        });
       }
+    }
+
+    if (!content.trim()) {
+      validationIssues.push({
+        questionIndex: questionNumber,
+        message: `Phần I - Câu ${questionNumber}: Nội dung câu hỏi bị trống`,
+        severity: 'error'
+      });
     }
 
     return {
@@ -736,11 +839,12 @@ function processQuestionBlock(
       difficulty: DifficultyLevel.THONG_HIEU,
       points: 0.25,
       content: content.trim(),
+      contentBlocks: rawBlocks,
       options,
       correctOption,
       solution,
-      imageUrl,
-      needsTeacherCheck
+      imageUrl: firstImage,
+      needsTeacherCheck: needsTeacherCheck || correctOption === null
     };
   }
 
@@ -753,8 +857,7 @@ function processQuestionBlock(
       trueFalseItems = matches.slice(0, 4).map(m => {
         const subContent = m[2].replace(/\n/g, ' ').trim();
         const lower = subContent.toLowerCase();
-        
-        // Guess if true or false from text labels
+
         const isExplicitFalse = (
           lower.includes('(sai)') ||
           lower.includes('[sai]') ||
@@ -774,7 +877,7 @@ function processQuestionBlock(
           lower.includes('-> đúng')
         );
 
-        let isCorrect = true;
+        let isCorrect: boolean | undefined = undefined;
         if (isExplicitFalse) {
           isCorrect = false;
         } else if (isExplicitTrue) {
@@ -789,7 +892,8 @@ function processQuestionBlock(
         return {
           id: m[1].toLowerCase(),
           content: cleanContent,
-          correctAnswer: isCorrect
+          correctAnswer: isCorrect,
+          contentBlocks: [{ type: 'text', value: cleanContent }]
         };
       });
 
@@ -798,12 +902,27 @@ function processQuestionBlock(
         content = content.substring(0, firstTfIndex).trim();
       }
     } else {
-      trueFalseItems = [
-        { id: 'a', content: 'Mệnh đề a', correctAnswer: true },
-        { id: 'b', content: 'Mệnh đề b', correctAnswer: false },
-        { id: 'c', content: 'Mệnh đề c', correctAnswer: true },
-        { id: 'd', content: 'Mệnh đề d', correctAnswer: false }
-      ];
+      validationIssues.push({
+        questionIndex: questionNumber,
+        message: `Phần II - Câu ${questionNumber}: Không tìm thấy đủ 4 ý a, b, c, d`,
+        severity: 'error'
+      });
+    }
+
+    if (trueFalseItems.some(i => i.correctAnswer === undefined)) {
+      validationIssues.push({
+        questionIndex: questionNumber,
+        message: `Phần II - Câu ${questionNumber}: Chưa xác định tính Đúng/Sai cho tất cả các mệnh đề`,
+        severity: 'warning'
+      });
+    }
+
+    if (!content.trim()) {
+      validationIssues.push({
+        questionIndex: questionNumber,
+        message: `Phần II - Câu ${questionNumber}: Nội dung câu hỏi bị trống`,
+        severity: 'error'
+      });
     }
 
     return {
@@ -814,9 +933,10 @@ function processQuestionBlock(
       difficulty: DifficultyLevel.THONG_HIEU,
       points: 1.0,
       content: content.trim(),
+      contentBlocks: rawBlocks,
       trueFalseItems,
       solution,
-      imageUrl,
+      imageUrl: firstImage,
       needsTeacherCheck
     };
   }
@@ -827,12 +947,26 @@ function processQuestionBlock(
     const ansMatch = (solution || block).match(/(?:đáp số|kết quả|đáp án|kết luận)[\:\=\s]+([^\n\r]+)/i);
     if (ansMatch) {
       ans = ansMatch[1].trim();
-      // Remove trailing periods or punctuation
       ans = ans.replace(/^[\:\=\s]+/, '').replace(/[\.\;\,]+$/, '').trim();
     }
 
-    // Strip "Đáp số: ..." from question content if present
     content = content.replace(/(?:đáp số|kết quả|đáp án|kết luận)[\:\=\s]+[^\n\r]+/gi, '').trim();
+
+    if (!ans) {
+      validationIssues.push({
+        questionIndex: questionNumber,
+        message: `Phần III - Câu ${questionNumber}: Chưa có đáp số trả lời ngắn`,
+        severity: 'error'
+      });
+    }
+
+    if (!content.trim()) {
+      validationIssues.push({
+        questionIndex: questionNumber,
+        message: `Phần III - Câu ${questionNumber}: Nội dung câu hỏi bị trống`,
+        severity: 'error'
+      });
+    }
 
     return {
       id: `imported_q_${part}_${questionNumber}_${Date.now()}`,
@@ -842,16 +976,25 @@ function processQuestionBlock(
       difficulty: DifficultyLevel.VAN_DUNG,
       points: 0.5,
       content: content.trim(),
+      contentBlocks: rawBlocks,
       shortAnswerConfig: {
-        correctAnswers: ans ? [ans] : ['0']
+        correctAnswers: ans ? [ans] : []
       },
       solution,
-      imageUrl,
-      needsTeacherCheck
+      imageUrl: firstImage,
+      needsTeacherCheck: needsTeacherCheck || !ans
     };
   }
 
   // Part 4: Essay
+  if (!content.trim()) {
+    validationIssues.push({
+      questionIndex: questionNumber,
+      message: `Phần IV - Câu ${questionNumber}: Nội dung câu hỏi tự luận bị trống`,
+      severity: 'error'
+    });
+  }
+
   return {
     id: `imported_q_${part}_${questionNumber}_${Date.now()}`,
     part: 4,
@@ -860,9 +1003,10 @@ function processQuestionBlock(
     difficulty: DifficultyLevel.VAN_DUNG,
     points: 1.5,
     content: content.trim(),
+    contentBlocks: rawBlocks,
     essayGuide: solution || 'Giáo viên chấm điểm theo các bước biến đổi và kết luận chính xác.',
     solution,
-    imageUrl,
+    imageUrl: firstImage,
     needsTeacherCheck
   };
 }
