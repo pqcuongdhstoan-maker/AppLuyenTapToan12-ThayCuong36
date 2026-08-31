@@ -226,6 +226,16 @@ export class MtefDecoder {
         }
       }
 
+      // If no 0x0A (as in WMF embedded MTEF streams), search for font table END record (0x12, 0x00)
+      if (lineIdx === -1) {
+        for (let i = sig + 4; i < Math.min(sig + 350, this.bytes.length - 2); i++) {
+          if (this.bytes[i] === 0x12 && this.bytes[i + 1] === 0x00) {
+            lineIdx = i + 1;
+            break;
+          }
+        }
+      }
+
       if (lineIdx === -1) {
         return '';
       }
@@ -258,6 +268,10 @@ export class MtefDecoder {
         this.pos = i;
         return;
       }
+      if (this.bytes[i] === 0x03 && this.bytes[i + 1] === 0x01 && this.bytes[i + 2] === 0x01) {
+        this.pos = i;
+        return;
+      }
     }
     this.pos = this.bytes.length;
   }
@@ -267,11 +281,16 @@ export class MtefDecoder {
     let hasOpenParen = false;
 
     while (this.pos < this.bytes.length) {
-      // Check for End of stream in OLE container
+      // Check for End of stream in OLE / WMF container
       if (this.bytes[this.pos] === 0x45 && this.pos + 14 < this.bytes.length) {
         let sub = '';
         for (let k = 0; k < 15; k++) sub += String.fromCharCode(this.bytes[this.pos + k]);
         if (sub.includes('Equation Native')) break;
+      }
+      if (this.bytes[this.pos] === 0x53 && this.pos + 6 < this.bytes.length) {
+        let sub = '';
+        for (let k = 0; k < 7; k++) sub += String.fromCharCode(this.bytes[this.pos + k]);
+        if (sub.includes('System')) break;
       }
 
       // Check consecutive zeros (stream termination)
@@ -342,22 +361,41 @@ export class MtefDecoder {
 
   private cleanLatex(s: string): string {
     let res = s.trim();
-    // Remove embedded OLE garbage
+    // Remove embedded OLE garbage and system footers
     res = res.replace(/Equation\s*Native/gi, '');
+    if (res.includes('System')) {
+      res = res.substring(0, res.indexOf('System')).trim();
+    }
+    if (res.includes('Times New Roman')) {
+      res = res.substring(0, res.indexOf('Times New Roman')).trim();
+    }
     res = res.replace(/\s+/g, ' ');
     res = res.replace(/;\s*/g, '; ');
     res = res.replace(/--+/g, '-');
     res = res.replace(/\+\++/g, '+');
+    res = res.replace(/==+/g, '=');
     res = res.replace(/(\\infty)+/g, '\\infty');
     res = res.replace(/-\s*\\infty/g, '-\\infty');
     res = res.replace(/\+\s*\\infty/g, '+\\infty');
     res = res.replace(/\\left\s*\(/g, '(');
     res = res.replace(/\\right\s*\)/g, ')');
-    res = res.replace(/^\(+/, '(');
-    res = res.replace(/\)+$/, ')');
+    res = res.replace(/\(\(+/g, '(');
+    res = res.replace(/\)\)+/g, ')');
+    res = res.replace(/\(\s*\)/g, '');
+    res = res.replace(/f\(\(x\(\)/g, 'f(x)');
+    res = res.replace(/f\(x\(\)/g, 'f(x)');
+    res = res.replace(/f\s*x\s*\(\s*\)/g, 'f(x)');
     res = res.replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}');
     res = res.replace(/\\Upsilon\b/g, '');
     res = res.replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}');
+    res = res.replace(/\s*\.\s*$/, '');
+
+    if (res.includes(';') && !res.startsWith('(')) {
+      res = '(' + res;
+    }
+    if (res.startsWith('(') && !res.endsWith(')')) {
+      res = res + ')';
+    }
     return res.trim();
   }
 }

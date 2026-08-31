@@ -348,6 +348,11 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
               } else if (['wmf', 'emf'].includes(ext)) {
                 try {
                   const wmfBuf = await imageFile.async('arraybuffer');
+                  const mtefLatex = decodeMtefToLatex(wmfBuf);
+                  if (mtefLatex && mtefLatex.trim()) {
+                    oleMap[id] = mtefLatex;
+                    mathTypeCount++;
+                  }
                   const svgData = convertWmfToSvgDataUrl(wmfBuf);
                   if (svgData) {
                     imageMap[id] = svgData;
@@ -493,12 +498,18 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
       const vImgs = findChildrenByTag(el, 'imagedata');
       for (let v = 0; v < vImgs.length; v++) {
         const imgId = getAttr(vImgs[v], 'id') || getAttr(vImgs[v], 'href');
-        if (imgId && imageMap[imgId]) {
-          const url = imageMap[imgId];
-          const isSvg = url.startsWith('data:image/svg+xml');
-          const altText = isSvg ? 'Công thức MathType' : 'Hình minh họa';
-          pBlocks.push({ type: 'image', url, alt: altText });
-          pText += ` ![${altText}](${url}) `;
+        if (imgId) {
+          if (oleMap[imgId]) {
+            const latex = oleMap[imgId];
+            pText += ` $${latex}$ `;
+            pBlocks.push({ type: 'math', latex });
+          } else if (imageMap[imgId]) {
+            const url = imageMap[imgId];
+            const isSvg = url.startsWith('data:image/svg+xml');
+            const altText = isSvg ? 'Công thức MathType' : 'Hình minh họa';
+            pBlocks.push({ type: 'image', url, alt: altText });
+            pText += ` ![${altText}](${url}) `;
+          }
         }
       }
       return { text: pText, blocks: pBlocks, hasLowConfidenceMath: pLowConfidence };
@@ -509,12 +520,18 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
       const blipNodes = findChildrenByTag(el, 'blip');
       for (let b = 0; b < blipNodes.length; b++) {
         const embedId = getAttr(blipNodes[b], 'embed') || getAttr(blipNodes[b], 'id');
-        if (embedId && imageMap[embedId]) {
-          const url = imageMap[embedId];
-          const isSvg = url.startsWith('data:image/svg+xml');
-          const altText = isSvg ? 'Công thức MathType' : 'Hình minh họa';
-          pBlocks.push({ type: 'image', url, alt: altText });
-          pText += ` ![${altText}](${url}) `;
+        if (embedId) {
+          if (oleMap[embedId]) {
+            const latex = oleMap[embedId];
+            pText += ` $${latex}$ `;
+            pBlocks.push({ type: 'math', latex });
+          } else if (imageMap[embedId]) {
+            const url = imageMap[embedId];
+            const isSvg = url.startsWith('data:image/svg+xml');
+            const altText = isSvg ? 'Công thức MathType' : 'Hình minh họa';
+            pBlocks.push({ type: 'image', url, alt: altText });
+            pText += ` ![${altText}](${url}) `;
+          }
         }
       }
       return { text: pText, blocks: pBlocks, hasLowConfidenceMath: pLowConfidence };
