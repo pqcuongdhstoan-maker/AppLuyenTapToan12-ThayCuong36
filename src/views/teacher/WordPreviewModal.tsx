@@ -621,7 +621,7 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
                     {q.solution && (
                       <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100 text-xs text-slate-700">
                         <strong className="text-indigo-900 block mb-1">Lời giải:</strong>
-                        <MathRenderer content={q.solution} />
+                        <MathRenderer blocks={q.solutionBlocks} content={q.solution} />
                       </div>
                     )}
                   </>

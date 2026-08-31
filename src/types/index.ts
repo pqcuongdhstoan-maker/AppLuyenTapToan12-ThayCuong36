@@ -57,11 +57,15 @@ export interface User {
 }
 
 export interface ContentBlock {
-  type: 'text' | 'math' | 'image' | 'warning';
+  type: 'text' | 'math' | 'image' | 'math-image' | 'warning';
   value?: string;           // Plain text
   latex?: string;           // LaTeX math string (e.g. f(x), \mathbb{R})
   url?: string;             // Image URL / Data URL (PNG, SVG, JPG)
   alt?: string;             // Image label / caption
+  sourceType?: 'mathtype-ole' | 'omml' | 'wmf' | 'emf' | 'raster';
+  display?: 'inline' | 'block';
+  width?: number;
+  height?: number;
   warningMessage?: string;  // Warning description when an object could not be converted cleanly
 }
 
@@ -105,6 +109,8 @@ export interface Question {
   solutionBlocks?: ContentBlock[];
   points: number; // Max points for this question (default 0.25 for Part I, 1.0 for Part II, 0.5 for Part III, 1-2 for Part IV)
   imageUrl?: string;
+  fallbackMode?: 'content' | 'word-image'; // Azota-like fallback mode
+  fallbackImageUrl?: string; // Image snapshot of the entire question in Word appearance
   needsTeacherCheck?: boolean; // Flagged when formula extraction had low confidence or warnings
   topic?: string;
 }

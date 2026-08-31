@@ -733,7 +733,6 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
   if (hasUnconfidentFormulas) {
     warnings.push('Một số công thức toán có ký hiệu đặc biệt cần giáo viên kiểm tra lại trong màn hình xem trước.');
   }
-
   const stats: DocxParseStats = {
     part1Count: questions.filter(q => q.part === 1).length,
     part2Count: questions.filter(q => q.part === 2).length,
@@ -757,6 +756,302 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
 }
 
 /**
+ * Extracts sequential content blocks for Part I (Multiple Choice)
+ */
+function extractSequentialBlocksForPart1(
+  rawBlocks: ContentBlock[],
+  blockText: string
+): {
+  stemBlocks: ContentBlock[];
+  options: QuestionOption[];
+  correctOption: string | null;
+} {
+  const stemBlocks: ContentBlock[] = [];
+  const optionBlocksMap: { [key: string]: ContentBlock[] } = { A: [], B: [], C: [], D: [] };
+  let currentKey: string | null = null;
+  let detectedCorrect: string | null = null;
+
+  // Detect underlined option from raw text e.g. <u>A</u>. or <u>A.</u>
+  const underlinedMatch = blockText.match(/<u>\s*([A-D])[\.\:\s]*<\/u>|<u>\s*([A-D])\s*<\/u>[\.\:\s]/i);
+  if (underlinedMatch) {
+    detectedCorrect = (underlinedMatch[1] || underlinedMatch[2]).toUpperCase();
+  } else {
+    const ansMatch = blockText.match(/(?:đáp án|đáp án đúng|chọn|key|đa)[\:\s]*([A-D])\b/i);
+    if (ansMatch) detectedCorrect = ansMatch[1].toUpperCase();
+  }
+
+  for (const block of rawBlocks) {
+    if (block.type === 'text') {
+      const val = block.value || '';
+      // Search for option markers: A., B., C., D.
+      const optRegex = /(?:^|[\s\t\.\,\;])(?:<u>)?([A-D])(?:<\/u>)?[\.\:\)]\s*/g;
+      let lastIdx = 0;
+      let match: RegExpExecArray | null;
+
+      while ((match = optRegex.exec(val)) !== null) {
+        const preText = val.substring(lastIdx, match.index);
+        if (preText) {
+          const cleanPre = preText.replace(/<\/?u>/g, '').trim();
+          if (cleanPre) {
+            if (currentKey && optionBlocksMap[currentKey]) {
+              optionBlocksMap[currentKey].push({ type: 'text', value: cleanPre });
+            } else {
+              stemBlocks.push({ type: 'text', value: cleanPre });
+            }
+          }
+        }
+
+        currentKey = match[1].toUpperCase();
+        lastIdx = optRegex.lastIndex;
+      }
+
+      const remaining = val.substring(lastIdx);
+      if (remaining) {
+        const cleanRem = remaining.replace(/<\/?u>/g, '').trim();
+        if (cleanRem) {
+          if (currentKey && optionBlocksMap[currentKey]) {
+            optionBlocksMap[currentKey].push({ type: 'text', value: cleanRem });
+          } else {
+            stemBlocks.push({ type: 'text', value: cleanRem });
+          }
+        }
+      }
+    } else {
+      // Math, math-image, image, etc.
+      if (currentKey && optionBlocksMap[currentKey]) {
+        optionBlocksMap[currentKey].push(block);
+      } else {
+        stemBlocks.push(block);
+      }
+    }
+  }
+
+  const options: QuestionOption[] = ['A', 'B', 'C', 'D'].map(letter => {
+    const blks = optionBlocksMap[letter] || [];
+    let textContent = blks.map(b => {
+      if (b.type === 'text') return b.value || '';
+      if (b.type === 'math') return `$${b.latex}$`;
+      if (b.type === 'math-image') return `![](${b.url})`;
+      if (b.type === 'image') return `![](${b.url})`;
+      return '';
+    }).join(' ').trim();
+
+    return {
+      id: letter,
+      content: textContent,
+      contentBlocks: blks.length > 0 ? blks : [{ type: 'text', value: textContent }]
+    };
+  });
+
+  return { stemBlocks, options, correctOption: detectedCorrect };
+}
+
+/**
+ * Extracts sequential content blocks for Part II (True / False)
+ */
+function extractSequentialBlocksForPart2(
+  rawBlocks: ContentBlock[],
+  _blockText: string
+): {
+  stemBlocks: ContentBlock[];
+  trueFalseItems: TrueFalseItem[];
+} {
+  const stemBlocks: ContentBlock[] = [];
+  const tfBlocksMap: { [key: string]: ContentBlock[] } = { a: [], b: [], c: [], d: [] };
+  let currentKey: string | null = null;
+
+  for (const block of rawBlocks) {
+    if (block.type === 'text') {
+      const val = block.value || '';
+      // Search for sub-item markers: a), b), c), d) or a., b., c., d., (a), (b)
+      const tfRegex = /(?:^|[\s\t\.\,\;\n])(?:<u>)?(?:\(([a-d])\)|([a-d])(?:<\/u>)?[\.\:\)]|\(([a-d])\))(?:<\/u>)?\s*/gi;
+      let lastIdx = 0;
+      let match: RegExpExecArray | null;
+
+      while ((match = tfRegex.exec(val)) !== null) {
+        const preText = val.substring(lastIdx, match.index);
+        if (preText) {
+          const cleanPre = preText.replace(/<\/?u>/g, '').trim();
+          if (cleanPre) {
+            if (currentKey && tfBlocksMap[currentKey]) {
+              tfBlocksMap[currentKey].push({ type: 'text', value: cleanPre });
+            } else {
+              stemBlocks.push({ type: 'text', value: cleanPre });
+            }
+          }
+        }
+
+        const rawLetter = match[1] || match[2] || match[3];
+        currentKey = rawLetter ? rawLetter.toLowerCase() : 'a';
+        lastIdx = tfRegex.lastIndex;
+      }
+
+      const remaining = val.substring(lastIdx);
+      if (remaining) {
+        const cleanRem = remaining.replace(/<\/?u>/g, '').trim();
+        if (cleanRem) {
+          if (currentKey && tfBlocksMap[currentKey]) {
+            tfBlocksMap[currentKey].push({ type: 'text', value: cleanRem });
+          } else {
+            stemBlocks.push({ type: 'text', value: cleanRem });
+          }
+        }
+      }
+    } else {
+      if (currentKey && tfBlocksMap[currentKey]) {
+        tfBlocksMap[currentKey].push(block);
+      } else {
+        stemBlocks.push(block);
+      }
+    }
+  }
+
+  const trueFalseItems: TrueFalseItem[] = ['a', 'b', 'c', 'd'].map(letter => {
+    const blks = tfBlocksMap[letter] || [];
+    let textContent = blks.map(b => {
+      if (b.type === 'text') return b.value || '';
+      if (b.type === 'math') return `$${b.latex}$`;
+      if (b.type === 'math-image') return `![](${b.url})`;
+      if (b.type === 'image') return `![](${b.url})`;
+      return '';
+    }).join(' ').trim();
+
+    const lower = textContent.toLowerCase();
+    const isExplicitFalse = lower.includes('(sai)') || lower.includes('[sai]') || lower.includes('(s)') || lower.includes('[s]') || lower.endsWith(': sai') || lower.endsWith('. sai');
+    const isExplicitTrue = lower.includes('(đúng)') || lower.includes('[đúng]') || lower.includes('(dung)') || lower.includes('[dung]') || lower.includes('(đ)') || lower.includes('[đ]') || lower.endsWith(': đúng') || lower.endsWith('. đúng');
+
+    let correctAnswer: boolean | undefined = undefined;
+    if (isExplicitFalse) correctAnswer = false;
+    else if (isExplicitTrue) correctAnswer = true;
+
+    // Clean [Đúng] / [Sai] tags from text content
+    let cleanText = textContent
+      .replace(/[\(\[]\s*(đúng|sai|dung|đ|s|d)\s*[\)\]]/gi, '')
+      .replace(/[\:\.]\s*(đúng|sai|dung)\s*$/gi, '')
+      .trim();
+
+    return {
+      id: letter,
+      content: cleanText,
+      correctAnswer,
+      contentBlocks: blks.length > 0 ? blks : [{ type: 'text', value: cleanText }]
+    };
+  });
+
+  return { stemBlocks, trueFalseItems };
+}
+
+/**
+ * Extracts sequential content blocks for Part III (Short Answer)
+ */
+function extractSequentialBlocksForPart3(
+  rawBlocks: ContentBlock[],
+  blockText: string
+): {
+  stemBlocks: ContentBlock[];
+  shortAnswerConfig: ShortAnswerConfig;
+  solution?: string;
+  solutionBlocks?: ContentBlock[];
+} {
+  // Extract "Đáp án: X" or "Đáp số: X"
+  const ansMatch = blockText.match(/(?:đáp án|đáp số|kết quả|ans|da)[\:\s]*([\-0-9\,\.\/\+\s]+)/i);
+  let correctAnswers: string[] = [];
+  if (ansMatch) {
+    const rawVal = ansMatch[1].trim().replace(/\s+/g, '');
+    const altDot = rawVal.replace(/,/g, '.');
+    const altComma = rawVal.replace(/\./g, ',');
+    correctAnswers = Array.from(new Set([rawVal, altDot, altComma])).filter(Boolean);
+  }
+
+  let solution: string | undefined = undefined;
+  const solutionBlocks: ContentBlock[] = [];
+  const stemBlocks: ContentBlock[] = [];
+  let isInSolution = false;
+
+  for (const block of rawBlocks) {
+    if (block.type === 'text') {
+      const val = block.value || '';
+      const solIdx = val.search(/(lời giải|hướng dẫn giải|hd giải|solution)[\:\.]/i);
+      if (solIdx !== -1) {
+        const pre = val.substring(0, solIdx).trim();
+        if (pre) stemBlocks.push({ type: 'text', value: pre });
+        const post = val.substring(solIdx).trim();
+        if (post) solutionBlocks.push({ type: 'text', value: post });
+        isInSolution = true;
+        continue;
+      }
+    }
+
+    if (isInSolution) {
+      solutionBlocks.push(block);
+    } else {
+      stemBlocks.push(block);
+    }
+  }
+
+  if (solutionBlocks.length > 0) {
+    solution = solutionBlocks.map(b => b.value || (b.latex ? `$${b.latex}$` : '')).join(' ').trim();
+  }
+
+  return {
+    stemBlocks,
+    shortAnswerConfig: { correctAnswers, tolerance: 0.01 },
+    solution,
+    solutionBlocks: solutionBlocks.length > 0 ? solutionBlocks : undefined
+  };
+}
+
+/**
+ * Extracts sequential content blocks for Part IV (Essay)
+ */
+function extractSequentialBlocksForPart4(
+  rawBlocks: ContentBlock[],
+  _blockText: string
+): {
+  stemBlocks: ContentBlock[];
+  essayGuide?: string;
+  solution?: string;
+  solutionBlocks?: ContentBlock[];
+} {
+  const solutionBlocks: ContentBlock[] = [];
+  const stemBlocks: ContentBlock[] = [];
+  let isInSolution = false;
+
+  for (const block of rawBlocks) {
+    if (block.type === 'text') {
+      const val = block.value || '';
+      const solIdx = val.search(/(lời giải|hướng dẫn giải|hướng dẫn chấm|rubric|solution)[\:\.]/i);
+      if (solIdx !== -1) {
+        const pre = val.substring(0, solIdx).trim();
+        if (pre) stemBlocks.push({ type: 'text', value: pre });
+        const post = val.substring(solIdx).trim();
+        if (post) solutionBlocks.push({ type: 'text', value: post });
+        isInSolution = true;
+        continue;
+      }
+    }
+
+    if (isInSolution) {
+      solutionBlocks.push(block);
+    } else {
+      stemBlocks.push(block);
+    }
+  }
+
+  let essayGuide: string | undefined = undefined;
+  if (solutionBlocks.length > 0) {
+    essayGuide = solutionBlocks.map(b => b.value || (b.latex ? `$${b.latex}$` : '')).join(' ').trim();
+  }
+
+  return {
+    stemBlocks,
+    essayGuide,
+    solution: essayGuide,
+    solutionBlocks: solutionBlocks.length > 0 ? solutionBlocks : undefined
+  };
+}
+
+/**
  * Helper to parse a single question block into a structured Question object with rich ContentBlocks
  */
 function processQuestionBlock(
@@ -767,122 +1062,26 @@ function processQuestionBlock(
   needsTeacherCheck: boolean,
   validationIssues: DocxValidationIssue[]
 ): Question {
-  const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
+  // Strip "Câu X." prefix from the first text block
+  const cleanedRawBlocks = rawBlocks.map((b, idx) => {
+    if (idx === 0 && b.type === 'text') {
+      const firstVal = (b.value || '').replace(/^(?:\[|\()? *(?:câu|cau|bài|bai|question) *\d+ *[\.\:\-\]\)]\s*/i, '').trim();
+      return { ...b, value: firstVal };
+    }
+    return b;
+  });
 
-  // Remove "Câu X." or "[Câu X]" from content
-  let content = lines.join('\n');
-  content = content.replace(/^(?:\[|\()? *(?:câu|cau|bài|bai|question) *\d+ *[\.\:\-\]\)]\s*/i, '').trim();
-
-  // Clean any stray \Upsilon or corrupted \mathbb{R} \Upsilon
-  content = content
-    .replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}')
-    .replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}')
-    .replace(/\\Upsilon\b/g, '')
-    .replace(/\\mathbb\{R\}\s*\?/g, '\\mathbb{R}')
-    .replace(/y\s*==\s*/g, 'y = ')
-    .replace(/==+/g, '=')
-    .replace(/\$\s*=\s*/g, '$')
-    .replace(/f'\s*\(+\s*x\s*\(?/g, "f'(x)")
-    .replace(/f\s*\(+\s*x\s*\(?/g, 'f(x)')
-    .replace(/f\(\(x/g, 'f(x)')
-    .replace(/f'\(\(x/g, "f'(x)");
-
-  let options: QuestionOption[] = [];
-  let correctOption: string | null = null;
-  let trueFalseItems: TrueFalseItem[] = [];
-  let solution: string | undefined = undefined;
-
-  // Find image for backwards compatibility
-  const firstImage = rawBlocks.find(b => b.type === 'image')?.url;
-
-  // Check for "Lời giải:" or "Hướng dẫn giải:"
-  const solMatch = content.match(/(lời giải|hướng dẫn giải|hd giải|solution)[\:\.]([\s\S]*)$/i);
-  if (solMatch) {
-    solution = solMatch[2].trim();
-    content = content.replace(/(lời giải|hướng dẫn giải|hd giải|solution)[\:\.][\s\S]*$/i, '').trim();
-  }
+  const firstImage = cleanedRawBlocks.find(b => b.type === 'image')?.url;
 
   if (part === 1) {
-    // MCQ: find options A, B, C, D (supports inline, multiline, dotted .B., tabbed, and underlined <u>A</u>. / <u>A.</u>)
-    const optRegex = /(?:^|[\s\t\.\,\;])(?:<u>)?([A-D])(?:<\/u>)?[\.\:\)]\s*([\s\S]*?)(?=(?:[\s\t\.\,\;]|^)(?:<u>)?[A-D](?:<\/u>)?[\.\:\)]|$)/g;
-    const matches = Array.from(content.matchAll(optRegex));
+    const res = extractSequentialBlocksForPart1(cleanedRawBlocks, block);
+    const stemContent = res.stemBlocks.map(b => b.value || (b.latex ? `$${b.latex}$` : (b.url ? `![](${b.url})` : ''))).join(' ').trim();
 
-    if (matches.length >= 2) {
-      options = matches.slice(0, 4).map(m => {
-        let optText = m[2].replace(/<\/?u>/g, '').replace(/\n/g, ' ').trim();
-        // Remove trailing dots, commas, semicolons that belonged to word formatting
-        optText = optText.replace(/^[\.\,\;\s]+/, '').replace(/[\.\,\;\s]+$/, '').trim();
-        optText = optText
-          .replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}')
-          .replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}')
-          .replace(/\\Upsilon\b/g, '')
-          .replace(/\(\s*\.\s*\)/g, '')
-          .replace(/\(\s*\)/g, '')
-          .replace(/\(\s*$/, '')
-          .replace(/\s*\.\s*$/, '')
-          .replace(/\(\(+/g, '(')
-          .replace(/\)\)+/g, ')');
-
-        if (optText.includes(';') && !optText.startsWith('(')) {
-          optText = '(' + optText;
-        }
-        if (optText.includes(';') && !optText.endsWith(')')) {
-          optText = optText + ')';
-        }
-
-        return {
-          id: m[1].toUpperCase(),
-          content: optText,
-          contentBlocks: [{ type: 'text', value: optText }]
-        };
-      });
-
-      // Strip options from main question content
-      const firstOptIndex = content.search(/(?:^|[\s\t\.\,\;])(?:<u>)?[A-D](?:<\/u>)?[\.\:\)]/);
-      if (firstOptIndex !== -1) {
-        content = content.substring(0, firstOptIndex).trim();
-      }
-    } else {
+    if (res.options.length < 4 || res.options.some(o => !o.content)) {
       validationIssues.push({
         questionIndex: questionNumber,
-        message: `Phần I - Câu ${questionNumber}: Không tìm thấy đủ 4 phương án A, B, C, D`,
-        severity: 'error'
-      });
-    }
-
-    // Check if any option is empty
-    if (options.some(o => !o.content || !o.content.trim())) {
-      validationIssues.push({
-        questionIndex: questionNumber,
-        message: `Phần I - Câu ${questionNumber}: Có phương án lựa chọn bị trống nội dung`,
-        severity: 'error'
-      });
-    }
-
-    // Detect underlined/bold option for correct answer (e.g. <u>D</u>. or <u>D.</u>)
-    const underlinedMatch = block.match(/<u>\s*([A-D])[\.\:\s]*<\/u>|<u>\s*([A-D])\s*<\/u>[\.\:\s]/i);
-    if (underlinedMatch) {
-      correctOption = (underlinedMatch[1] || underlinedMatch[2]).toUpperCase();
-    } else {
-      // Look for explicit "ĐÁP ÁN: A" or "(Chọn A)"
-      const ansMatch = (solution || block).match(/(?:đáp án|đáp án đúng|chọn|key|đa)[\:\s]*([A-D])\b/i);
-      if (ansMatch) {
-        correctOption = ansMatch[1].toUpperCase();
-      } else {
-        correctOption = null;
-        validationIssues.push({
-          questionIndex: questionNumber,
-          message: `Phần I - Câu ${questionNumber}: Chưa xác định được đáp án đúng`,
-          severity: 'error'
-        });
-      }
-    }
-
-    if (!content.trim()) {
-      validationIssues.push({
-        questionIndex: questionNumber,
-        message: `Phần I - Câu ${questionNumber}: Nội dung câu hỏi bị trống`,
-        severity: 'error'
+        message: `Phần I - Câu ${questionNumber}: Kiểm tra các phương án A, B, C, D`,
+        severity: res.options.length < 2 ? 'error' : 'warning'
       });
     }
 
@@ -893,102 +1092,19 @@ function processQuestionBlock(
       type: QuestionType.MULTIPLE_CHOICE,
       difficulty: DifficultyLevel.THONG_HIEU,
       points: 0.25,
-      content: content.trim(),
-      options,
-      correctOption,
-      solution,
+      content: stemContent,
+      contentBlocks: res.stemBlocks,
+      options: res.options,
+      correctOption: res.correctOption,
       imageUrl: firstImage,
-      needsTeacherCheck: needsTeacherCheck || correctOption === null
+      fallbackMode: 'content',
+      needsTeacherCheck: needsTeacherCheck || res.correctOption === null
     };
   }
 
   if (part === 2) {
-    // True / False: items a), b), c), d) or a., b., c., d., <u>a)</u>, (a)
-    const tfRegex = /(?:^|[\s\t\.\,\;\n])(?:<u>)?(?:\(([a-d])\)|([a-d])(?:<\/u>)?[\.\:\)]|\(([a-d])\))(?:<\/u>)?\s*([\s\S]*?)(?=(?:[\s\t\.\,\;\n]|^)(?:<u>)?(?:\([a-d]\)|[a-d](?:<\/u>)?[\.\:\)]|\([a-d]\))(?:<\/u>)?|$)/gi;
-    const matches = Array.from(content.matchAll(tfRegex));
-
-    if (matches.length >= 2) {
-      trueFalseItems = matches.slice(0, 4).map(m => {
-        const rawId = m[1] || m[2] || m[3];
-        const id = rawId ? rawId.toLowerCase() : 'a';
-        let subContent = (m[4] || '').replace(/<\/?u>/g, '').replace(/\n/g, ' ').trim();
-        const lower = subContent.toLowerCase();
-
-        const isExplicitFalse = (
-          lower.includes('(sai)') ||
-          lower.includes('[sai]') ||
-          lower.includes('(s)') ||
-          lower.includes('[s]') ||
-          lower.includes('-> sai') ||
-          lower.endsWith(': sai') ||
-          lower.endsWith('. sai')
-        );
-        const isExplicitTrue = (
-          lower.includes('(đúng)') ||
-          lower.includes('[đúng]') ||
-          lower.includes('(dung)') ||
-          lower.includes('[dung]') ||
-          lower.includes('(đ)') ||
-          lower.includes('[đ]') ||
-          lower.includes('(d)') ||
-          lower.includes('[d]') ||
-          lower.includes('-> đúng') ||
-          lower.endsWith(': đúng') ||
-          lower.endsWith('. đúng')
-        );
-
-        let isCorrect: boolean | undefined = undefined;
-        if (isExplicitFalse) {
-          isCorrect = false;
-        } else if (isExplicitTrue) {
-          isCorrect = true;
-        }
-
-        let cleanContent = subContent
-          .replace(/^(?:<u>)?(?:\([a-d]\)|[a-d][\.\:\)]|\([a-d]\))(?:<\/u>)?\s*/i, '')
-          .replace(/[\(\[]\s*(đúng|sai|dung|đ|s|d)\s*[\)\]]/gi, '')
-          .replace(/[\:\.]\s*(đúng|sai|dung)\s*$/gi, '')
-          .replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}')
-          .replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}')
-          .replace(/\\Upsilon\b/g, '')
-          .replace(/\s+/g, ' ')
-          .trim();
-
-        return {
-          id,
-          content: cleanContent,
-          correctAnswer: isCorrect,
-          contentBlocks: [{ type: 'text', value: cleanContent }]
-        };
-      });
-
-      const firstTfIndex = content.search(/(?:^|[\s\t\.\,\;\n])(?:<u>)?(?:\([a-d]\)|[a-d](?:<\/u>)?[\.\:\)]|\([a-d]\))(?:<\/u>)?/i);
-      if (firstTfIndex !== -1) {
-        content = content.substring(0, firstTfIndex).trim();
-      }
-    } else {
-      validationIssues.push({
-        questionIndex: questionNumber,
-        message: `Phần II - Câu ${questionNumber}: Không tìm thấy đủ 4 ý a, b, c, d`,
-        severity: 'error'
-      });
-    }
-
-    if (trueFalseItems.some(i => i.correctAnswer === undefined)) {
-      validationIssues.push({
-        questionIndex: questionNumber,
-        message: `Phần II - Câu ${questionNumber}: Chưa xác định tính Đúng/Sai cho tất cả các mệnh đề`,
-        severity: 'warning'
-      });
-    }
-
-    if (!content.trim()) {
-      validationIssues.push({
-        questionIndex: questionNumber,
-        message: `Phần II - Câu ${questionNumber}: Nội dung câu hỏi bị trống`,
-        severity: 'error'
-      });
-    }
+    const res = extractSequentialBlocksForPart2(cleanedRawBlocks, block);
+    const stemContent = res.stemBlocks.map(b => b.value || (b.latex ? `$${b.latex}$` : (b.url ? `![](${b.url})` : ''))).join(' ').trim();
 
     return {
       id: `imported_q_${part}_${questionNumber}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
@@ -997,40 +1113,18 @@ function processQuestionBlock(
       type: QuestionType.TRUE_FALSE,
       difficulty: DifficultyLevel.THONG_HIEU,
       points: 1.0,
-      content: content.trim(),
-      trueFalseItems,
-      solution,
+      content: stemContent,
+      contentBlocks: res.stemBlocks,
+      trueFalseItems: res.trueFalseItems,
       imageUrl: firstImage,
-      needsTeacherCheck
+      fallbackMode: 'content',
+      needsTeacherCheck: needsTeacherCheck || res.trueFalseItems.some(tf => tf.correctAnswer === undefined)
     };
   }
 
   if (part === 3) {
-    // Short Answer: Extract "Đáp án: 407", "Đáp số: 71,3", "Kết quả: 4500"
-    let ans = '';
-    const ansMatch = (solution || block).match(/(?:đáp số|kết quả|đáp án|kết luận|da|ds)[\:\=\s]+([^\n\r]+)/i);
-    if (ansMatch) {
-      ans = ansMatch[1].trim();
-      ans = ans.replace(/^[\:\=\s]+/, '').replace(/[\.\;\,]+$/, '').trim();
-    }
-
-    content = content.replace(/(?:đáp số|kết quả|đáp án|kết luận|da|ds)[\:\=\s]+[^\n\r]+/gi, '').trim();
-
-    if (!ans) {
-      validationIssues.push({
-        questionIndex: questionNumber,
-        message: `Phần III - Câu ${questionNumber}: Chưa có đáp số trả lời ngắn`,
-        severity: 'error'
-      });
-    }
-
-    if (!content.trim()) {
-      validationIssues.push({
-        questionIndex: questionNumber,
-        message: `Phần III - Câu ${questionNumber}: Nội dung câu hỏi bị trống`,
-        severity: 'error'
-      });
-    }
+    const res = extractSequentialBlocksForPart3(cleanedRawBlocks, block);
+    const stemContent = res.stemBlocks.map(b => b.value || (b.latex ? `$${b.latex}$` : (b.url ? `![](${b.url})` : ''))).join(' ').trim();
 
     return {
       id: `imported_q_${part}_${questionNumber}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
@@ -1039,36 +1133,35 @@ function processQuestionBlock(
       type: QuestionType.SHORT_ANSWER,
       difficulty: DifficultyLevel.VAN_DUNG,
       points: 0.5,
-      content: content.trim(),
-      shortAnswerConfig: {
-        correctAnswers: ans ? [ans] : []
-      },
-      solution,
+      content: stemContent,
+      contentBlocks: res.stemBlocks,
+      shortAnswerConfig: res.shortAnswerConfig,
+      solution: res.solution,
+      solutionBlocks: res.solutionBlocks,
       imageUrl: firstImage,
-      needsTeacherCheck: needsTeacherCheck || !ans
+      fallbackMode: 'content',
+      needsTeacherCheck: needsTeacherCheck || res.shortAnswerConfig.correctAnswers.length === 0
     };
   }
 
-  // Part 4: Essay
-  if (!content.trim()) {
-    validationIssues.push({
-      questionIndex: questionNumber,
-      message: `Phần IV - Câu ${questionNumber}: Nội dung câu hỏi tự luận bị trống`,
-      severity: 'error'
-    });
-  }
+  // Part 4 (Essay)
+  const res = extractSequentialBlocksForPart4(cleanedRawBlocks, block);
+  const stemContent = res.stemBlocks.map(b => b.value || (b.latex ? `$${b.latex}$` : (b.url ? `![](${b.url})` : ''))).join(' ').trim();
 
   return {
-    id: `imported_q_${part}_${questionNumber}_${Date.now()}`,
+    id: `imported_q_${part}_${questionNumber}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
     part: 4,
     questionNumber,
     type: QuestionType.ESSAY,
-    difficulty: DifficultyLevel.VAN_DUNG,
-    points: 1.5,
-    content: content.trim(),
-    essayGuide: solution || 'Giáo viên chấm điểm theo các bước biến đổi và kết luận chính xác.',
-    solution,
+    difficulty: DifficultyLevel.VAN_DUNG_CAO,
+    points: 1.0,
+    content: stemContent,
+    contentBlocks: res.stemBlocks,
+    essayGuide: res.essayGuide,
+    solution: res.solution,
+    solutionBlocks: res.solutionBlocks,
     imageUrl: firstImage,
+    fallbackMode: 'content',
     needsTeacherCheck
   };
 }
@@ -1124,11 +1217,12 @@ export function normalizeImportedQuestion(q: Question): Question {
 
   let content = cleanMathString(q.content || '');
 
-  // Clean contentBlocks
+  // 2. Clean contentBlocks
   let contentBlocks = (q.contentBlocks || [])
     .filter(b => {
       if (b.type === 'text') return Boolean(b.value && b.value.trim());
       if (b.type === 'math') return Boolean(b.latex && b.latex.trim());
+      if (b.type === 'math-image') return Boolean(b.url && b.url.trim());
       if (b.type === 'image') return Boolean(b.url && b.url.trim());
       if (b.type === 'warning') return Boolean(b.warningMessage && b.warningMessage.trim());
       return true;
@@ -1177,25 +1271,46 @@ export function normalizeImportedQuestion(q: Question): Question {
       optContent = optContent.replace(/^\(\s*\(\s*([^;\)]+;\s*[^;\)]+)\s*\)\s*\)$/, '($1)');
     }
 
+    const optBlocks = (opt.contentBlocks && opt.contentBlocks.length > 0)
+      ? opt.contentBlocks.map(b => {
+          if (b.type === 'text') return { ...b, value: cleanMathString(b.value || '') };
+          if (b.type === 'math') return { ...b, latex: cleanMathString(b.latex || '') };
+          return b;
+        })
+      : [{ type: 'text' as const, value: optContent }];
+
     return {
       ...opt,
       content: optContent,
-      contentBlocks: [{ type: 'text' as const, value: optContent }]
+      contentBlocks: optBlocks
     };
   });
 
   // 4. Clean True/False items (Part II)
   let trueFalseItems = q.trueFalseItems?.map(tf => {
     let c = cleanMathString(tf.content);
+    const tfBlocks = (tf.contentBlocks && tf.contentBlocks.length > 0)
+      ? tf.contentBlocks.map(b => {
+          if (b.type === 'text') return { ...b, value: cleanMathString(b.value || '') };
+          if (b.type === 'math') return { ...b, latex: cleanMathString(b.latex || '') };
+          return b;
+        })
+      : [{ type: 'text' as const, value: c }];
+
     return {
       ...tf,
       content: c,
-      contentBlocks: [{ type: 'text' as const, value: c }]
+      contentBlocks: tfBlocks
     };
   });
 
   // 5. Clean solution
   let solution = q.solution ? cleanMathString(q.solution) : undefined;
+  let solutionBlocks = q.solutionBlocks?.map(b => {
+    if (b.type === 'text') return { ...b, value: cleanMathString(b.value || '') };
+    if (b.type === 'math') return { ...b, latex: cleanMathString(b.latex || '') };
+    return b;
+  });
 
   // Diagnostic log in dev
   if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production') {
@@ -1216,6 +1331,7 @@ export function normalizeImportedQuestion(q: Question): Question {
     contentBlocks: mergedBlocks,
     options,
     trueFalseItems,
-    solution
+    solution,
+    solutionBlocks
   };
 }

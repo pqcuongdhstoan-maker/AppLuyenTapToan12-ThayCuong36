@@ -516,10 +516,13 @@ export const MathRenderer: React.FC<MathRendererProps> = ({ content, blocks, cla
               return `<span class="katex-error text-rose-500 font-mono text-xs">[Lỗi công thức: ${escapeHtml(rawMath)}]</span>`;
             }
           }
+          if (block.type === 'math-image') {
+            return `<img src="${block.url || ''}" alt="" class="inline-block max-h-8 align-middle my-0.5 mx-0.5 select-none" />`;
+          }
           if (block.type === 'image') {
             const isInline = (block.url || '').startsWith('data:image/svg+xml') || (block.alt || '').toLowerCase().includes('công thức') || (block.alt || '').toLowerCase().includes('mathtype');
             if (isInline) {
-              return `<img src="${block.url || ''}" alt="" class="inline-block max-h-8 align-middle my-0.5 mx-1" />`;
+              return `<img src="${block.url || ''}" alt="" class="inline-block max-h-8 align-middle my-0.5 mx-0.5 select-none" />`;
             }
             const cleanCaption = (block.alt && !block.alt.toLowerCase().includes('hình minh họa') && !block.alt.toLowerCase().includes('image') && !block.alt.toLowerCase().includes('mathtype') && !block.alt.toLowerCase().includes('công thức')) ? block.alt.trim() : '';
             return `<figure class="question-image my-3 flex flex-col items-center justify-center">
