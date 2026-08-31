@@ -311,12 +311,15 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
 
         if (id && target) {
           const cleanTarget = target.startsWith('/') ? target.substring(1) : `word/${target}`;
-          if (type.includes('/image') || target.match(/\.(png|jpg|jpeg|gif|wmf|emf|svg)$/i)) {
+          if (type.includes('/image') || target.match(/\.(png|jpg|jpeg|gif|svg|webp|wmf|emf)$/i)) {
             const imageFile = zip.file(cleanTarget) || zip.file(target);
             if (imageFile) {
-              const base64 = await imageFile.async('base64');
               const ext = target.split('.').pop()?.toLowerCase() || 'png';
-              imageMap[id] = `data:image/${ext};base64,${base64}`;
+              // Only load browser-supported image formats into imageMap
+              if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) {
+                const base64 = await imageFile.async('base64');
+                imageMap[id] = `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,${base64}`;
+              }
             }
           } else if (type.includes('oleObject') || target.endsWith('.bin') || target.includes('embeddings')) {
             const binFile = zip.file(cleanTarget) || zip.file(target) || zip.file(`word/embeddings/${target.split('/').pop()}`);
@@ -382,7 +385,6 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
     // 2. MathType OLE Object (<w:object>)
     if (tag === 'object') {
       const oleNodes = findChildrenByTag(el, 'OLEObject');
-      let foundMath = false;
       for (let o = 0; o < oleNodes.length; o++) {
         const rId = getAttr(oleNodes[o], 'id') || '';
         const shapeId = getAttr(oleNodes[o], 'ShapeID') || '';
@@ -399,20 +401,10 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
 
         if (latex) {
           pText += ` $${latex}$ `;
-          foundMath = true;
         }
       }
 
-      // Check for image representation in shape if math wasn't decoded as text
-      const vImgs = findChildrenByTag(el, 'imagedata');
-      for (let v = 0; v < vImgs.length; v++) {
-        const imgId = getAttr(vImgs[v], 'id') || getAttr(vImgs[v], 'href');
-        if (imgId && imageMap[imgId]) {
-          if (!foundMath) {
-            pImage = imageMap[imgId];
-          }
-        }
-      }
+      // Do NOT set pImage from object (WMF previews should never replace question illustrations)
       return { text: pText, image: pImage, hasLowConfidenceMath: pLowConfidence };
     }
 
@@ -432,7 +424,7 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
     if (tag === 'drawing') {
       const blipNodes = findChildrenByTag(el, 'blip');
       for (let b = 0; b < blipNodes.length; b++) {
-        const embedId = getAttr(blipNodes[b], 'embed');
+        const embedId = getAttr(blipNodes[b], 'embed') || getAttr(blipNodes[b], 'id');
         if (embedId && imageMap[embedId]) {
           pImage = imageMap[embedId];
         }
@@ -743,7 +735,7 @@ function processQuestionBlock(
       type: QuestionType.MULTIPLE_CHOICE,
       difficulty: DifficultyLevel.THONG_HIEU,
       points: 0.25,
-      content,
+      content: content.trim(),
       options,
       correctOption,
       solution,
@@ -760,18 +752,44 @@ function processQuestionBlock(
     if (matches.length >= 2) {
       trueFalseItems = matches.slice(0, 4).map(m => {
         const subContent = m[2].replace(/\n/g, ' ').trim();
-        // Guess if true or false from text
-        const isFalse = (
-          subContent.toLowerCase().includes('(sai)') ||
-          subContent.toLowerCase().includes('[sai]') ||
-          subContent.toLowerCase().includes('-> sai') ||
-          subContent.toLowerCase().includes('(s)') ||
-          subContent.toLowerCase().includes('[s]')
+        const lower = subContent.toLowerCase();
+        
+        // Guess if true or false from text labels
+        const isExplicitFalse = (
+          lower.includes('(sai)') ||
+          lower.includes('[sai]') ||
+          lower.includes('(s)') ||
+          lower.includes('[s]') ||
+          lower.includes('-> sai')
         );
+        const isExplicitTrue = (
+          lower.includes('(đúng)') ||
+          lower.includes('[đúng]') ||
+          lower.includes('(dung)') ||
+          lower.includes('[dung]') ||
+          lower.includes('(đ)') ||
+          lower.includes('[đ]') ||
+          lower.includes('(d)') ||
+          lower.includes('[d]') ||
+          lower.includes('-> đúng')
+        );
+
+        let isCorrect = true;
+        if (isExplicitFalse) {
+          isCorrect = false;
+        } else if (isExplicitTrue) {
+          isCorrect = true;
+        }
+
+        const cleanContent = subContent
+          .replace(/[\(\[]\s*(đúng|sai|dung|đ|s|d)\s*[\)\]]/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
         return {
           id: m[1].toLowerCase(),
-          content: subContent.replace(/[\(\[]\s*(đúng|sai|đ|s)\s*[\)\]]/gi, '').trim(),
-          correctAnswer: !isFalse
+          content: cleanContent,
+          correctAnswer: isCorrect
         };
       });
 
@@ -795,7 +813,7 @@ function processQuestionBlock(
       type: QuestionType.TRUE_FALSE,
       difficulty: DifficultyLevel.THONG_HIEU,
       points: 1.0,
-      content,
+      content: content.trim(),
       trueFalseItems,
       solution,
       imageUrl,
@@ -806,10 +824,15 @@ function processQuestionBlock(
   if (part === 3) {
     // Short Answer
     let ans = '';
-    const ansMatch = (solution || block).match(/(đáp số|kết quả|đáp án)\s*[\:\=]\s*([^\n]+)/i);
+    const ansMatch = (solution || block).match(/(?:đáp số|kết quả|đáp án|kết luận)[\:\=\s]+([^\n\r]+)/i);
     if (ansMatch) {
-      ans = ansMatch[2].trim();
+      ans = ansMatch[1].trim();
+      // Remove trailing periods or punctuation
+      ans = ans.replace(/^[\:\=\s]+/, '').replace(/[\.\;\,]+$/, '').trim();
     }
+
+    // Strip "Đáp số: ..." from question content if present
+    content = content.replace(/(?:đáp số|kết quả|đáp án|kết luận)[\:\=\s]+[^\n\r]+/gi, '').trim();
 
     return {
       id: `imported_q_${part}_${questionNumber}_${Date.now()}`,
@@ -818,7 +841,7 @@ function processQuestionBlock(
       type: QuestionType.SHORT_ANSWER,
       difficulty: DifficultyLevel.VAN_DUNG,
       points: 0.5,
-      content,
+      content: content.trim(),
       shortAnswerConfig: {
         correctAnswers: ans ? [ans] : ['0']
       },
@@ -836,7 +859,7 @@ function processQuestionBlock(
     type: QuestionType.ESSAY,
     difficulty: DifficultyLevel.VAN_DUNG,
     points: 1.5,
-    content,
+    content: content.trim(),
     essayGuide: solution || 'Giáo viên chấm điểm theo các bước biến đổi và kết luận chính xác.',
     solution,
     imageUrl,
