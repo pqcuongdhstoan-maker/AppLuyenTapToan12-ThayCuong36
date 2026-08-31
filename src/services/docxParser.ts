@@ -791,7 +791,14 @@ function processQuestionBlock(
     .replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}')
     .replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}')
     .replace(/\\Upsilon\b/g, '')
-    .replace(/\\mathbb\{R\}\s*\?/g, '\\mathbb{R}');
+    .replace(/\\mathbb\{R\}\s*\?/g, '\\mathbb{R}')
+    .replace(/y\s*==\s*/g, 'y = ')
+    .replace(/==+/g, '=')
+    .replace(/\$\s*=\s*/g, '$')
+    .replace(/f'\s*\(+\s*x\s*\(?/g, "f'(x)")
+    .replace(/f\s*\(+\s*x\s*\(?/g, 'f(x)')
+    .replace(/f\(\(x/g, 'f(x)')
+    .replace(/f'\(\(x/g, "f'(x)");
 
   let options: QuestionOption[] = [];
   let correctOption: string | null = null;
@@ -821,7 +828,21 @@ function processQuestionBlock(
         optText = optText
           .replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}')
           .replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}')
-          .replace(/\\Upsilon\b/g, '');
+          .replace(/\\Upsilon\b/g, '')
+          .replace(/\(\s*\.\s*\)/g, '')
+          .replace(/\(\s*\)/g, '')
+          .replace(/\(\s*$/, '')
+          .replace(/\s*\.\s*$/, '')
+          .replace(/\(\(+/g, '(')
+          .replace(/\)\)+/g, ')');
+
+        if (optText.includes(';') && !optText.startsWith('(')) {
+          optText = '(' + optText;
+        }
+        if (optText.includes(';') && !optText.endsWith(')')) {
+          optText = optText + ')';
+        }
+
         return {
           id: m[1].toUpperCase(),
           content: optText,

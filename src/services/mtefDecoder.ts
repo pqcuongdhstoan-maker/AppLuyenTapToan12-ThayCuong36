@@ -361,7 +361,7 @@ export class MtefDecoder {
 
   private cleanLatex(s: string): string {
     let res = s.trim();
-    // Remove embedded OLE garbage and system footers
+    // 1. Remove embedded OLE garbage and system footers
     res = res.replace(/Equation\s*Native/gi, '');
     if (res.includes('System')) {
       res = res.substring(0, res.indexOf('System')).trim();
@@ -369,31 +369,54 @@ export class MtefDecoder {
     if (res.includes('Times New Roman')) {
       res = res.substring(0, res.indexOf('Times New Roman')).trim();
     }
+    if (res.includes('WinAll')) {
+      res = res.substring(0, res.indexOf('WinAll')).trim();
+    }
+
+    // 2. Remove empty and trailing parentheses from MathType delimiters
+    res = res.replace(/\(\s*\.\s*\)/g, '');
+    res = res.replace(/\(\s*\)/g, '');
+    res = res.replace(/\(\s*$/, '');
+    res = res.replace(/\s*\.\s*$/, '');
+
+    // 3. Fix duplicate symbols
     res = res.replace(/\s+/g, ' ');
     res = res.replace(/;\s*/g, '; ');
     res = res.replace(/--+/g, '-');
     res = res.replace(/\+\++/g, '+');
     res = res.replace(/==+/g, '=');
+    res = res.replace(/=\s*=/g, '=');
     res = res.replace(/(\\infty)+/g, '\\infty');
     res = res.replace(/-\s*\\infty/g, '-\\infty');
     res = res.replace(/\+\s*\\infty/g, '+\\infty');
     res = res.replace(/\\left\s*\(/g, '(');
     res = res.replace(/\\right\s*\)/g, ')');
+
+    // 4. Fix double / nested parentheses
     res = res.replace(/\(\(+/g, '(');
     res = res.replace(/\)\)+/g, ')');
-    res = res.replace(/\(\s*\)/g, '');
-    res = res.replace(/f\(\(x\(\)/g, 'f(x)');
+
+    // 5. Fix function representations
+    res = res.replace(/f'\s*\(+\s*x\s*\(?/g, "f'(x)");
+    res = res.replace(/f\s*\(+\s*x\s*\(?/g, "f(x)");
     res = res.replace(/f\(x\(\)/g, 'f(x)');
-    res = res.replace(/f\s*x\s*\(\s*\)/g, 'f(x)');
+    res = res.replace(/f'\(x\(\)/g, "f'(x)");
+    res = res.replace(/f\(\(x/g, 'f(x)');
+    res = res.replace(/f'\(\(x/g, "f'(x)");
+
+    // 6. Clean leading =
+    res = res.replace(/^\s*=\s*/, '');
+
+    // 7. Clean sets and Greek symbols
     res = res.replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}');
     res = res.replace(/\\Upsilon\b/g, '');
     res = res.replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}');
-    res = res.replace(/\s*\.\s*$/, '');
 
+    // 8. Ensure balanced interval parentheses (a; b)
     if (res.includes(';') && !res.startsWith('(')) {
       res = '(' + res;
     }
-    if (res.startsWith('(') && !res.endsWith(')')) {
+    if (res.includes(';') && !res.endsWith(')')) {
       res = res + ')';
     }
     return res.trim();
