@@ -466,27 +466,17 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
       }
 
       if (!foundMath) {
-        // Check if there is an image preview in v:imagedata
+        // Check if v:imagedata has MathType WMF in oleMap
         const vImgs = findChildrenByTag(el, 'imagedata');
-        let previewFound = false;
         for (let v = 0; v < vImgs.length; v++) {
           const imgId = getAttr(vImgs[v], 'id') || getAttr(vImgs[v], 'href');
-          if (imgId && imageMap[imgId]) {
-            pBlocks.push({ type: 'image', url: imageMap[imgId], alt: 'Công thức MathType' });
-            pBlocks.push({
-              type: 'warning',
-              warningMessage: 'Công thức MathType được nhập dưới dạng hình ảnh – cần giáo viên kiểm tra'
-            });
-            previewFound = true;
+          if (imgId && oleMap[imgId]) {
+            const latex = oleMap[imgId];
+            pText += ` $${latex}$ `;
+            pBlocks.push({ type: 'math', latex });
+            foundMath = true;
             break;
           }
-        }
-        if (!previewFound) {
-          failedConversionsCount++;
-          pBlocks.push({
-            type: 'warning',
-            warningMessage: 'Đối tượng MathType OLE không thể giải mã – vui lòng kiểm tra lại'
-          });
         }
       }
 
@@ -1093,36 +1083,48 @@ function processQuestionBlock(
  * - Merges adjacent text blocks and logs diagnostic info in DEV
  */
 export function normalizeImportedQuestion(q: Question): Question {
-  // 1. Clean question content string
-  let content = (q.content || '')
-    .replace(/!\[\s*Hình minh họa\s*\]/gi, '![]')
-    .replace(/!\[\s*Công thức MathType\s*\]/gi, '![]')
-    .replace(/Hình minh họa/gi, '')
-    // Fix duplicate signs
-    .replace(/y\s*==\s*/g, 'y = ')
-    .replace(/==+/g, '=')
-    .replace(/=\s*=/g, '=')
-    .replace(/--+/g, '-')
-    .replace(/\+\++/g, '+')
-    .replace(/(\\infty)+/g, '\\infty')
-    .replace(/-\s*\\infty/g, '-\\infty')
-    .replace(/\+\s*\\infty/g, '+\\infty')
-    // Fix function parentheses: f(x))) or f((x -> f(x)
-    .replace(/f'\s*\(+\s*x\s*\(?/g, "f'(x)")
-    .replace(/f\s*\(+\s*x\s*\(?/g, "f(x)")
-    .replace(/f\s*\(\s*x\s*\)\)+/g, "f(x)")
-    .replace(/f'\s*\(\s*x\s*\)\)+/g, "f'(x)")
-    .replace(/f\(\(x/g, "f(x)")
-    .replace(/f'\(\(x/g, "f'(x)")
-    // Clean sets and greek symbols
-    .replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}')
-    .replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}')
-    .replace(/\\Upsilon\b/g, '')
-    .replace(/\\mathbb\{R\}\s*\?/g, '\\mathbb{R}')
-    .replace(/\s+/g, ' ')
-    .trim();
+  // Comprehensive helper to clean mathematical formulas and text
+  const cleanMathString = (s: string): string => {
+    if (!s) return '';
+    let res = s
+      // Remove any fake alt text / captions
+      .replace(/!\[\s*Hình minh họa\s*\]/gi, '![]')
+      .replace(/!\[\s*Công thức MathType\s*\]/gi, '![]')
+      .replace(/Hình minh họa/gi, '')
+      // Fix duplicate boundary signs
+      .replace(/y\s*==\s*/g, 'y = ')
+      .replace(/==+/g, '=')
+      .replace(/=\s*=/g, '=')
+      .replace(/--+/g, '-')
+      .replace(/\+\++/g, '+')
+      .replace(/(\\infty)+/g, '\\infty')
+      .replace(/-\s*\\infty/g, '-\\infty')
+      .replace(/\+\s*\\infty/g, '+\\infty')
+      // Fix function duplicate parentheses: f(x))) -> f(x)
+      .replace(/f'\s*\(+\s*x\s*[\)\s]*/g, "f'(x)")
+      .replace(/f\s*\(+\s*x\s*[\)\s]*/g, "f(x)")
+      .replace(/f'\s*\(\s*x\s*\)[\)\s]*/g, "f'(x)")
+      .replace(/f\s*\(\s*x\s*\)[\)\s]*/g, "f(x)")
+      .replace(/f\(\(x/g, "f(x)")
+      .replace(/f'\(\(x/g, "f'(x)")
+      // Fix double parentheses on intervals: ((a; b)) -> (a; b)
+      .replace(/\(\(\s*([^;\$]+;\s*[^;\$]+)\s*\)\)/g, '($1)')
+      .replace(/\(\(\s*([^;\$]+;\s*[^;\$]+)\s*\)/g, '($1)')
+      .replace(/\(\s*([^;\$]+;\s*[^;\$]+)\s*\)\)/g, '($1)')
+      // Clean sets and greek symbols
+      .replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}')
+      .replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}')
+      .replace(/\\Upsilon\b/g, '')
+      .replace(/\\mathbb\{R\}\s*\?/g, '\\mathbb{R}')
+      .replace(/\s+/g, ' ')
+      .trim();
 
-  // 2. Clean contentBlocks
+    return res;
+  };
+
+  let content = cleanMathString(q.content || '');
+
+  // Clean contentBlocks
   let contentBlocks = (q.contentBlocks || [])
     .filter(b => {
       if (b.type === 'text') return Boolean(b.value && b.value.trim());
@@ -1133,20 +1135,13 @@ export function normalizeImportedQuestion(q: Question): Question {
     })
     .map(b => {
       if (b.type === 'text') {
-        let val = (b.value || '')
-          .replace(/Hình minh họa/gi, '')
-          .replace(/y\s*==\s*/g, 'y = ')
-          .replace(/==+/g, '=')
-          .replace(/\s+/g, ' ');
-        return { ...b, value: val };
+        return { ...b, value: cleanMathString(b.value || '') };
       }
       if (b.type === 'math') {
-        let l = (b.latex || '')
+        let l = cleanMathString(b.latex || '')
           .replace(/==+/g, '=')
           .replace(/\(\(+/g, '(')
-          .replace(/\)\)+/g, ')')
-          .replace(/f'\s*\(+\s*x\s*\(?/g, "f'(x)")
-          .replace(/f\s*\(+\s*x\s*\(?/g, "f(x)");
+          .replace(/\)\)+/g, ')');
         return { ...b, latex: l.trim() };
       }
       if (b.type === 'image') {
@@ -1169,29 +1164,17 @@ export function normalizeImportedQuestion(q: Question): Question {
 
   // 3. Clean options (Part I)
   let options = q.options?.map(opt => {
-    let optContent = opt.content
-      .replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}')
-      .replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}')
-      .replace(/\\Upsilon\b/g, '')
-      .replace(/\(\s*\.\s*\)/g, '')
-      .replace(/\(\s*\)/g, '')
-      .replace(/\(\s*$/, '')
-      .replace(/\s*\.\s*$/, '')
-      .replace(/\(\(+/g, '(')
-      .replace(/\)\)+/g, ')')
-      .replace(/--+/g, '-')
-      .replace(/\+\++/g, '+')
-      .replace(/-\\infty/g, '-\\infty')
-      .replace(/\+\\infty/g, '+\\infty')
-      .replace(/(\\infty)+/g, '\\infty')
-      .replace(/;\s*/g, '; ')
-      .trim();
+    let optContent = cleanMathString(opt.content);
 
-    if (optContent.includes(';') && !optContent.startsWith('(') && !optContent.startsWith('[')) {
-      optContent = '(' + optContent;
-    }
-    if (optContent.includes(';') && !optContent.endsWith(')') && !optContent.endsWith(']')) {
-      optContent = optContent + ')';
+    // Format interval (a; b)
+    if (optContent.includes(';')) {
+      if (!optContent.startsWith('(') && !optContent.startsWith('[')) {
+        optContent = '(' + optContent;
+      }
+      if (!optContent.endsWith(')') && !optContent.endsWith(']')) {
+        optContent = optContent + ')';
+      }
+      optContent = optContent.replace(/^\(\s*\(\s*([^;\)]+;\s*[^;\)]+)\s*\)\s*\)$/, '($1)');
     }
 
     return {
@@ -1203,17 +1186,7 @@ export function normalizeImportedQuestion(q: Question): Question {
 
   // 4. Clean True/False items (Part II)
   let trueFalseItems = q.trueFalseItems?.map(tf => {
-    let c = tf.content
-      .replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}')
-      .replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}')
-      .replace(/\\Upsilon\b/g, '')
-      .replace(/y\s*==\s*/g, 'y = ')
-      .replace(/==+/g, '=')
-      .replace(/f'\s*\(+\s*x\s*\(?/g, "f'(x)")
-      .replace(/f\s*\(+\s*x\s*\(?/g, "f(x)")
-      .replace(/\s+/g, ' ')
-      .trim();
-
+    let c = cleanMathString(tf.content);
     return {
       ...tf,
       content: c,
@@ -1222,15 +1195,7 @@ export function normalizeImportedQuestion(q: Question): Question {
   });
 
   // 5. Clean solution
-  let solution = q.solution ? q.solution
-    .replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}')
-    .replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}')
-    .replace(/\\Upsilon\b/g, '')
-    .replace(/y\s*==\s*/g, 'y = ')
-    .replace(/==+/g, '=')
-    .replace(/f'\s*\(+\s*x\s*\(?/g, "f'(x)")
-    .replace(/f\s*\(+\s*x\s*\(?/g, "f(x)")
-    .trim() : undefined;
+  let solution = q.solution ? cleanMathString(q.solution) : undefined;
 
   // Diagnostic log in dev
   if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production') {

@@ -293,10 +293,16 @@ export class MtefDecoder {
 
     while (this.pos < this.bytes.length) {
       // Check for End of stream in OLE / WMF container
-      if (this.bytes[this.pos] === 0x45 && this.pos + 14 < this.bytes.length) {
-        let sub = '';
-        for (let k = 0; k < 15; k++) sub += String.fromCharCode(this.bytes[this.pos + k]);
-        if (sub.includes('Equation Native')) break;
+      if (this.bytes[this.pos] === 0x45) {
+        if (this.pos + 14 < this.bytes.length) {
+          let sub = '';
+          for (let k = 0; k < 15; k++) sub += String.fromCharCode(this.bytes[this.pos + k]);
+          if (sub.includes('Equation Native')) break;
+        }
+        if (this.pos + 28 < this.bytes.length && this.bytes[this.pos + 1] === 0x00 && this.bytes[this.pos + 2] === 0x71) {
+          // UTF-16LE "Equation Native"
+          break;
+        }
       }
       if (this.bytes[this.pos] === 0x53 && this.pos + 6 < this.bytes.length) {
         let sub = '';
@@ -339,6 +345,16 @@ export class MtefDecoder {
           this.pos += 2;
           continue;
         }
+        if (b0 === 0x3C && b1 === 0x00) {
+          tokens.push(' < ');
+          this.pos += 2;
+          continue;
+        }
+        if (b0 === 0x3E && b1 === 0x00) {
+          tokens.push(' > ');
+          this.pos += 2;
+          continue;
+        }
 
         const code16 = b0 | (b1 << 8);
         if (UNICODE_MAP[code16]) {
@@ -372,6 +388,10 @@ export class MtefDecoder {
         tokens.push('\\pm');
       } else if (b === 0x3D) {
         tokens.push(' = ');
+      } else if (b === 0x3C) {
+        tokens.push(' < ');
+      } else if (b === 0x3E) {
+        tokens.push(' > ');
       } else if (b >= 40 && b <= 59) {
         // '(', ')', '*', '+', ',', '-', '.', '/', '0'..'9', ':', ';'
         tokens.push(String.fromCharCode(b));
@@ -396,13 +416,19 @@ export class MtefDecoder {
     if (res.includes('Times New Roman')) res = res.substring(0, res.indexOf('Times New Roman')).trim();
     if (res.includes('WinAll')) res = res.substring(0, res.indexOf('WinAll')).trim();
 
-    // 2. Remove empty and trailing parentheses from MathType delimiters
+    // 2. Unify LaTeX delimiters
+    res = res.replace(/\\left\s*\(/g, '(');
+    res = res.replace(/\\right\s*\)/g, ')');
+    res = res.replace(/\\left\s*\[/g, '[');
+    res = res.replace(/\\right\s*\]/g, ']');
+
+    // 3. Remove empty and trailing parentheses from MathType delimiters
     res = res.replace(/\(\s*\.\s*\)/g, '');
     res = res.replace(/\(\s*\)/g, '');
     res = res.replace(/\(\s*$/, '');
     res = res.replace(/\s*\.\s*$/, '');
 
-    // 3. Fix duplicate symbols
+    // 4. Fix duplicate symbols
     res = res.replace(/\s+/g, ' ');
     res = res.replace(/;\s*/g, '; ');
     res = res.replace(/--+/g, '-');
@@ -412,37 +438,37 @@ export class MtefDecoder {
     res = res.replace(/-\\infty/g, '-\\infty');
     res = res.replace(/\+\\infty/g, '+\\infty');
     res = res.replace(/(\\infty)+/g, '\\infty');
-    res = res.replace(/\\left\s*\(/g, '(');
-    res = res.replace(/\\right\s*\)/g, ')');
 
-    // 4. Fix double / nested parentheses
+    // 5. Strictly remove duplicate/nested parentheses
     res = res.replace(/\(\(+/g, '(');
     res = res.replace(/\)\)+/g, ')');
 
-    // 5. Fix function representations
-    res = res.replace(/f'\s*\(+\s*x\s*\(?/g, "f'(x)");
-    res = res.replace(/f\s*\(+\s*x\s*\(?/g, "f(x)");
-    res = res.replace(/f\(x\(\)/g, 'f(x)');
-    res = res.replace(/f'\(x\(\)/g, "f'(x)");
+    // 6. Fix function representations: f(x))) -> f(x)
+    res = res.replace(/f'\s*\(+\s*x\s*[\)\s]*/g, "f'(x)");
+    res = res.replace(/f\s*\(+\s*x\s*[\)\s]*/g, "f(x)");
+    res = res.replace(/f'\s*\(\s*x\s*\)[\)\s]*/g, "f'(x)");
+    res = res.replace(/f\s*\(\s*x\s*\)[\)\s]*/g, "f(x)");
     res = res.replace(/f\(\(x/g, 'f(x)');
     res = res.replace(/f'\(\(x/g, "f'(x)");
-    res = res.replace(/f'\s*\(\s*x\s*\)/g, "f'(x)");
-    res = res.replace(/f\s*\(\s*x\s*\)/g, "f(x)");
 
-    // 6. Clean leading =
+    // 7. Clean leading =
     res = res.replace(/^\s*=\s*/, '');
 
-    // 7. Clean sets and Greek symbols
+    // 8. Clean sets and Greek symbols
     res = res.replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}');
     res = res.replace(/\\Upsilon\b/g, '');
     res = res.replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}');
 
-    // 8. Ensure balanced interval parentheses (a; b)
-    if (res.includes(';') && !res.startsWith('(') && !res.startsWith('[')) {
-      res = '(' + res;
-    }
-    if (res.includes(';') && !res.endsWith(')') && !res.endsWith(']')) {
-      res = res + ')';
+    // 9. Ensure balanced interval parentheses (a; b)
+    if (res.includes(';')) {
+      if (!res.startsWith('(') && !res.startsWith('[')) {
+        res = '(' + res;
+      }
+      if (!res.endsWith(')') && !res.endsWith(']')) {
+        res = res + ')';
+      }
+      // Deduplicate ((a; b)) -> (a; b)
+      res = res.replace(/^\(\s*\(\s*([^;\)]+;\s*[^;\)]+)\s*\)\s*\)$/, '($1)');
     }
 
     return res.trim();

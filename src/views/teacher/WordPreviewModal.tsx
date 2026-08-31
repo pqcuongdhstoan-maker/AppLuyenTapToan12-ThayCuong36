@@ -518,7 +518,7 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
                       <MathRenderer blocks={q.contentBlocks} content={q.content} />
                     </div>
 
-                    {q.imageUrl && !q.content.includes(q.imageUrl) && !q.imageUrl.startsWith('data:image/svg+xml') && (
+                    {q.imageUrl && !q.contentBlocks?.some(b => b.type === 'image' && b.url === q.imageUrl) && !q.content.includes(q.imageUrl) && !q.imageUrl.startsWith('data:image/svg+xml') && (
                       <figure className="question-image my-3 flex flex-col items-center justify-center">
                         <img
                           src={q.imageUrl}

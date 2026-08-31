@@ -650,7 +650,7 @@ export const ExamTakingView: React.FC<ExamTakingViewProps> = ({
             </div>
 
             {/* Optional Image (Diagrams only, not inline formula SVGs) */}
-            {currentQuestion.imageUrl && !currentQuestion.content.includes(currentQuestion.imageUrl) && !currentQuestion.imageUrl.startsWith('data:image/svg+xml') && (
+            {currentQuestion.imageUrl && !currentQuestion.contentBlocks?.some(b => b.type === 'image' && b.url === currentQuestion.imageUrl) && !currentQuestion.content.includes(currentQuestion.imageUrl) && !currentQuestion.imageUrl.startsWith('data:image/svg+xml') && (
               <figure className="question-image my-3 flex flex-col items-center justify-center">
                 <img
                   src={currentQuestion.imageUrl}

@@ -69,6 +69,20 @@ export function preprocessMathContent(rawText: string): string {
     return `$${match}$`;
   });
 
+  // 9. Normalize duplicate parentheses and common mathematical function patterns
+  text = text
+    .replace(/f'\s*\(+\s*x\s*[\)\s]*/g, "f'(x)")
+    .replace(/f\s*\(+\s*x\s*[\)\s]*/g, "f(x)")
+    .replace(/f'\s*\(\s*x\s*\)[\)\s]*/g, "f'(x)")
+    .replace(/f\s*\(\s*x\s*\)[\)\s]*/g, "f(x)")
+    .replace(/f\(\(x/g, "f(x)")
+    .replace(/f'\(\(x/g, "f'(x)")
+    .replace(/\(\(\s*([^;\$]+;\s*[^;\$]+)\s*\)\)/g, '($1)')
+    .replace(/\(\(\s*([^;\$]+;\s*[^;\$]+)\s*\)/g, '($1)')
+    .replace(/\(\s*([^;\$]+;\s*[^;\$]+)\s*\)\)/g, '($1)')
+    .replace(/!\[\s*Hình minh họa\s*\]/gi, '![]')
+    .replace(/Hình minh họa/gi, '');
+
   return text;
 }
 
@@ -408,10 +422,6 @@ export function renderFormattedText(content: string): string {
       if (imgMatch) {
         const alt = imgMatch[1] || '';
         const src = imgMatch[2];
-        const isInline = src.startsWith('data:image/svg+xml') || alt.toLowerCase().includes('công thức') || alt.toLowerCase().includes('mathtype');
-        if (isInline) {
-          return `<img src="${src}" alt="${escapeHtml(alt || 'Công thức')}" class="inline-block max-h-8 align-middle my-0.5 mx-1" />`;
-        }
         const isInline = src.startsWith('data:image/svg+xml') || alt.toLowerCase().includes('công thức') || alt.toLowerCase().includes('mathtype');
         if (isInline) {
           return `<img src="${src}" alt="" class="inline-block max-h-8 align-middle my-0.5 mx-1" />`;
