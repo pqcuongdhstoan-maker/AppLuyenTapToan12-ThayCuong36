@@ -872,13 +872,15 @@ function processQuestionBlock(
   }
 
   if (part === 2) {
-    // True / False: items a), b), c), d) or a., b., c., d.
-    const tfRegex = /(?:^|[\s\t\.\,\;])([a-d])[\.\:\)]\s*([\s\S]*?)(?=(?:[\s\t\.\,\;]|^)[a-d][\.\:\)]|$)/g;
+    // True / False: items a), b), c), d) or a., b., c., d., <u>a)</u>, (a)
+    const tfRegex = /(?:^|[\s\t\.\,\;\n])(?:<u>)?(?:\(([a-d])\)|([a-d])(?:<\/u>)?[\.\:\)]|\(([a-d])\))(?:<\/u>)?\s*([\s\S]*?)(?=(?:[\s\t\.\,\;\n]|^)(?:<u>)?(?:\([a-d]\)|[a-d](?:<\/u>)?[\.\:\)]|\([a-d]\))(?:<\/u>)?|$)/gi;
     const matches = Array.from(content.matchAll(tfRegex));
 
     if (matches.length >= 2) {
       trueFalseItems = matches.slice(0, 4).map(m => {
-        let subContent = m[2].replace(/\n/g, ' ').trim();
+        const rawId = m[1] || m[2] || m[3];
+        const id = rawId ? rawId.toLowerCase() : 'a';
+        let subContent = (m[4] || '').replace(/<\/?u>/g, '').replace(/\n/g, ' ').trim();
         const lower = subContent.toLowerCase();
 
         const isExplicitFalse = (
@@ -921,14 +923,14 @@ function processQuestionBlock(
           .trim();
 
         return {
-          id: m[1].toLowerCase(),
+          id,
           content: cleanContent,
           correctAnswer: isCorrect,
           contentBlocks: [{ type: 'text', value: cleanContent }]
         };
       });
 
-      const firstTfIndex = content.search(/(?:^|[\s\t\.\,\;])[a-d][\.\:\)]/);
+      const firstTfIndex = content.search(/(?:^|[\s\t\.\,\;\n])(?:<u>)?(?:\([a-d]\)|[a-d](?:<\/u>)?[\.\:\)]|\([a-d]\))(?:<\/u>)?/i);
       if (firstTfIndex !== -1) {
         content = content.substring(0, firstTfIndex).trim();
       }
