@@ -913,7 +913,8 @@ function processQuestionBlock(
           isCorrect = true;
         }
 
-        const cleanContent = subContent
+        let cleanContent = subContent
+          .replace(/^(?:<u>)?(?:\([a-d]\)|[a-d][\.\:\)]|\([a-d]\))(?:<\/u>)?\s*/i, '')
           .replace(/[\(\[]\s*(đúng|sai|dung|đ|s|d)\s*[\)\]]/gi, '')
           .replace(/[\:\.]\s*(đúng|sai|dung)\s*$/gi, '')
           .replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}')
