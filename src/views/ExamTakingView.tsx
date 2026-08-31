@@ -590,81 +590,122 @@ export const ExamTakingView: React.FC<ExamTakingViewProps> = ({
         {/* Left / Center: Question Content (8 cols) */}
         <div className="lg:col-span-8 space-y-4">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8">
-            {/* Question Header & Type Badge */}
-            <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <span className="px-3 py-1 bg-indigo-600 text-white text-xs font-black rounded-lg shadow-2xs">
-                  CÂU {currentQuestion.questionNumber}
-                </span>
-                <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-md">
-                  {currentQuestion.part === 1 && 'PHẦN I • TRẮC NGHIỆM 4 LỰA CHỌN'}
-                  {currentQuestion.part === 2 && 'PHẦN II • TRẮC NGHIỆM ĐÚNG / SAI'}
-                  {currentQuestion.part === 3 && 'PHẦN III • TRẢ LỜI NGẮN'}
-                  {currentQuestion.part === 4 && 'PHẦN IV • TỰ LUẬN'}
-                </span>
-                <span className="text-[11px] text-slate-400 font-medium">
-                  ({currentQuestion.points} điểm)
-                </span>
+            {/* Section Header (Azota Style) */}
+            <div className="mb-5 pb-3 border-b border-slate-200">
+              <div className="text-sm font-black text-slate-900 leading-snug">
+                {currentQuestion.part === 1 && (
+                  <>
+                    <span>PHẦN I. Câu trắc nghiệm nhiều phương án lựa chọn</span>{' '}
+                    <span className="font-normal italic text-slate-600 text-xs">
+                      (học sinh trả lời các câu hỏi từ 1 đến 12, mỗi câu hỏi học sinh chỉ chọn một phương án)
+                    </span>
+                  </>
+                )}
+                {currentQuestion.part === 2 && (
+                  <>
+                    <span>PHẦN II. Câu trắc nghiệm đúng sai.</span>{' '}
+                    <span className="font-normal italic text-slate-600 text-xs">
+                      (Học sinh trả lời từ câu 1 đến câu 4. Trong mỗi ý a), b), c), d) ở mỗi câu, thí sinh chỉ chọn đúng hoặc sai).
+                    </span>
+                  </>
+                )}
+                {currentQuestion.part === 3 && (
+                  <>
+                    <span>PHẦN III. Câu trắc nghiệm trả lời ngắn.</span>{' '}
+                    <span className="font-normal italic text-slate-600 text-xs">
+                      (Thí sinh trả lời từ câu 1 đến câu 6).
+                    </span>
+                  </>
+                )}
+                {currentQuestion.part === 4 && (
+                  <>
+                    <span>PHẦN IV. Tự luận.</span>
+                  </>
+                )}
               </div>
+            </div>
 
-              {/* Flag button */}
+            {/* Question Title & Flag button */}
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-base font-black text-slate-900">
+                Câu {currentQuestion.questionNumber}
+              </h3>
+
               <button
                 onClick={() => handleToggleFlag(currentQuestion.id)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
                   isFlagged
                     ? 'bg-amber-100 text-amber-800 border border-amber-300'
                     : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200'
                 }`}
               >
                 <Flag className={`w-3.5 h-3.5 ${isFlagged ? 'fill-amber-500 text-amber-500' : ''}`} />
-                <span>{isFlagged ? 'Đã đánh dấu' : 'Đánh dấu xem lại'}</span>
+                <span>{isFlagged ? 'Đã đánh dấu' : 'Đánh dấu'}</span>
               </button>
             </div>
 
             {/* Question Body with KaTeX */}
-            <div className="text-base text-slate-900 font-normal leading-relaxed mb-6">
-              <MathRenderer content={currentQuestion.content} />
+            <div className="text-base text-slate-900 font-normal leading-relaxed mb-4">
+              <MathRenderer blocks={currentQuestion.contentBlocks} content={currentQuestion.content} />
             </div>
 
             {/* Optional Image */}
             {currentQuestion.imageUrl && (
-              <div className="mb-6 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 p-2 text-center">
+              <div className="mb-4">
                 <img
                   src={currentQuestion.imageUrl}
                   alt={`Minh họa câu ${currentQuestion.questionNumber}`}
-                  className="max-h-72 mx-auto object-contain rounded-xl"
+                  className="max-h-72 object-contain rounded-xl border border-slate-200 p-1 bg-white shadow-2xs"
                 />
               </div>
             )}
 
-            {/* --- Render Form based on Question Type --- */}
+            {/* Action Sub-divider (Azota Style) */}
+            <div className="relative flex py-4 items-center my-3">
+              <div className="flex-grow border-t border-slate-200"></div>
+              <span className="flex-shrink mx-4 text-slate-700 text-xs font-semibold">
+                {currentQuestion.part === 1 && 'Chọn một đáp án đúng'}
+                {currentQuestion.part === 2 && 'Chọn đúng hoặc sai'}
+                {currentQuestion.part === 3 && 'Nhập đáp án'}
+                {currentQuestion.part === 4 && 'Bài làm tự luận'}
+              </span>
+              <div className="flex-grow border-t border-slate-200"></div>
+            </div>
+
+            {/* --- Render Form based on Question Type (Azota Layout) --- */}
 
             {/* PART I: MULTIPLE CHOICE */}
             {currentQuestion.part === 1 && currentQuestion.options && (
-              <div className="space-y-3">
+              <div className="space-y-3 pt-1">
                 {currentQuestion.options.map((opt) => {
                   const isSelected = currentAnswer?.selectedOption === opt.id;
                   return (
                     <div
                       key={opt.id}
                       onClick={() => handleSelectOption(currentQuestion.id, opt.id)}
-                      className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-start gap-3 ${
-                        isSelected
-                          ? 'border-indigo-600 bg-indigo-50/70 shadow-xs'
-                          : 'border-slate-200 hover:border-indigo-200 hover:bg-slate-50/50 bg-white'
-                      }`}
+                      className="flex items-center gap-3 cursor-pointer group"
                     >
-                      <div
-                        className={`w-7 h-7 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 transition-all ${
+                      {/* Circular letter button */}
+                      <button
+                        type="button"
+                        className={`w-9 h-9 rounded-full border-2 flex items-center justify-center font-bold text-sm shrink-0 transition-all ${
                           isSelected
-                            ? 'bg-indigo-600 text-white shadow-xs'
-                            : 'bg-slate-100 text-slate-700'
+                            ? 'border-indigo-600 bg-indigo-600 text-white shadow-xs'
+                            : 'border-slate-300 text-slate-700 group-hover:border-indigo-400 group-hover:bg-indigo-50/50 bg-white'
                         }`}
                       >
                         {opt.id}
-                      </div>
-                      <div className="text-sm font-medium text-slate-800 pt-0.5 leading-relaxed">
-                        <MathRenderer content={opt.content} />
+                      </button>
+
+                      {/* Rounded box wrapping option content */}
+                      <div
+                        className={`px-4 py-2.5 rounded-xl border transition-all text-sm font-medium text-slate-900 ${
+                          isSelected
+                            ? 'border-indigo-500 bg-indigo-50/60 shadow-xs'
+                            : 'border-slate-200 bg-white group-hover:border-slate-300 group-hover:bg-slate-50/50'
+                        }`}
+                      >
+                        <MathRenderer blocks={opt.contentBlocks} content={opt.content} />
                       </div>
                     </div>
                   );
@@ -674,49 +715,45 @@ export const ExamTakingView: React.FC<ExamTakingViewProps> = ({
 
             {/* PART II: TRUE / FALSE */}
             {currentQuestion.part === 2 && currentQuestion.trueFalseItems && (
-              <div className="space-y-3">
-                <div className="text-xs font-semibold text-slate-500 mb-2">
-                  Chọn ĐÚNG hoặc SAI cho mỗi ý a), b), c), d) dưới đây:
-                </div>
+              <div className="space-y-3 pt-1">
                 {currentQuestion.trueFalseItems.map((item) => {
                   const currentChoice = currentAnswer?.trueFalseAnswers?.[item.id];
                   return (
                     <div
                       key={item.id}
-                      className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      className="flex items-center gap-3"
                     >
-                      <div className="flex items-start gap-2.5">
-                        <span className="font-black text-slate-800 text-xs uppercase bg-white border border-slate-200 px-2 py-1 rounded-lg">
-                          {item.id})
-                        </span>
-                        <div className="text-sm text-slate-800 leading-relaxed font-medium">
-                          <MathRenderer content={item.content} />
+                      {/* Proposition content in rounded box */}
+                      <div className="flex-1 px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-900 flex items-start gap-2 shadow-2xs">
+                        <span className="font-bold shrink-0">{item.id})</span>
+                        <div className="leading-relaxed">
+                          <MathRenderer blocks={item.contentBlocks} content={item.content} />
                         </div>
                       </div>
 
-                      {/* True / False Toggle buttons */}
-                      <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                      {/* Right toggle buttons: ( Đúng ) ( Sai ) */}
+                      <div className="flex items-center gap-2 shrink-0">
                         <button
                           type="button"
                           onClick={() => handleTrueFalseChange(currentQuestion.id, item.id, true)}
-                          className={`px-3.5 py-1.5 rounded-xl font-extrabold text-xs transition-all ${
+                          className={`px-4 py-2 rounded-full border text-xs font-bold transition-all shadow-2xs ${
                             currentChoice === true
-                              ? 'bg-emerald-600 text-white shadow-xs'
-                              : 'bg-white hover:bg-emerald-50 text-emerald-700 border border-slate-200'
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                              : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
                           }`}
                         >
-                          ✓ ĐÚNG
+                          Đúng
                         </button>
                         <button
                           type="button"
                           onClick={() => handleTrueFalseChange(currentQuestion.id, item.id, false)}
-                          className={`px-3.5 py-1.5 rounded-xl font-extrabold text-xs transition-all ${
+                          className={`px-4 py-2 rounded-full border text-xs font-bold transition-all shadow-2xs ${
                             currentChoice === false
-                              ? 'bg-rose-600 text-white shadow-xs'
-                              : 'bg-white hover:bg-rose-50 text-rose-700 border border-slate-200'
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                              : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
                           }`}
                         >
-                          ✕ SAI
+                          Sai
                         </button>
                       </div>
                     </div>
@@ -727,43 +764,31 @@ export const ExamTakingView: React.FC<ExamTakingViewProps> = ({
 
             {/* PART III: SHORT ANSWER */}
             {currentQuestion.part === 3 && (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">
-                    Nhập kết quả trả lời ngắn:
-                  </label>
-                  <input
-                    type="text"
-                    value={currentAnswer?.shortAnswer || ''}
-                    onChange={(e) => handleShortAnswerChange(currentQuestion.id, e.target.value)}
-                    placeholder="Nhập số nguyên, số thập phân, phân số hoặc tọa độ..."
-                    className="w-full px-4 py-3 border-2 border-indigo-200 focus:border-indigo-600 rounded-2xl text-base font-mono text-slate-900 focus:ring-0 focus:outline-hidden bg-white shadow-inner"
-                  />
-                </div>
-
-                <div className="p-3 bg-indigo-50/70 rounded-xl border border-indigo-100 text-xs text-indigo-800 flex items-start gap-2">
-                  <HelpCircle className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                  <span>
-                    Ví dụ định dạng hợp lệ: số nguyên (<code>4</code>), số thực (<code>3.5</code> hoặc <code>3,5</code>), phân số (<code>3/4</code>), tọa độ (<code>(1; -2; 3)</code>).
-                  </span>
-                </div>
+              <div className="space-y-3 pt-1">
+                <textarea
+                  rows={4}
+                  value={currentAnswer?.shortAnswer || ''}
+                  onChange={(e) => handleShortAnswerChange(currentQuestion.id, e.target.value)}
+                  placeholder="Đáp án của bạn"
+                  className="w-full p-4 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white shadow-2xs transition-all resize-y"
+                />
               </div>
             )}
 
             {/* PART IV: ESSAY */}
             {currentQuestion.part === 4 && (
-              <div className="space-y-4">
+              <div className="space-y-4 pt-1">
                 <div className="flex items-center justify-between">
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                    Trình bày lời giải chi tiết:
+                    Trình bày bài làm tự luận:
                   </label>
                   <button
                     type="button"
                     onClick={() => setShowMathEditorForEssay(!showMathEditorForEssay)}
-                    className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1"
+                    className="text-xs text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
-                    {showMathEditorForEssay ? 'Ẩn bảng ký hiệu Toán' : 'Mở bảng ký hiệu Toán'}
+                    <span>{showMathEditorForEssay ? 'Soạn thảo văn bản thường' : 'Bật bộ gõ công thức Toán'}</span>
                   </button>
                 </div>
 
@@ -771,19 +796,18 @@ export const ExamTakingView: React.FC<ExamTakingViewProps> = ({
                   <MathEditor
                     value={currentAnswer?.essayText || ''}
                     onChange={(val) => handleEssayTextChange(currentQuestion.id, val)}
-                    placeholder="Gõ lời giải và công thức LaTeX (ví dụ: Tính đạo hàm $f'(x) = 3x^2 - 6x = 0$)..."
+                    placeholder="Nhập bài làm tự luận..."
                     rows={6}
                   />
                 ) : (
                   <textarea
-                    rows={6}
                     value={currentAnswer?.essayText || ''}
                     onChange={(e) => handleEssayTextChange(currentQuestion.id, e.target.value)}
-                    placeholder="Gõ lời giải các bước tự luận vào đây..."
-                    className="w-full p-4 border border-slate-300 rounded-2xl text-sm font-sans focus:ring-2 focus:ring-indigo-500 focus:outline-hidden leading-relaxed"
+                    placeholder="Đáp án hoặc bài làm của bạn..."
+                    rows={6}
+                    className="w-full p-4 border border-slate-200 rounded-xl text-sm font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white shadow-2xs"
                   />
                 )}
-
                 {/* Upload Image / Document files for Essay */}
                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
                   <div className="flex items-center justify-between mb-3">

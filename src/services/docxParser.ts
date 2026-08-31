@@ -777,13 +777,15 @@ function processQuestionBlock(
   }
 
   if (part === 1) {
-    // MCQ: find options A, B, C, D (supports inline, multiline, and underlined <u>A</u>. / <u>A.</u>)
-    const optRegex = /(?:^|\s|\t)(?:<u>)?([A-D])(?:<\/u>)?[\.\:\)]\s*([\s\S]*?)(?=(?:\s|\t)(?:<u>)?[A-D](?:<\/u>)?[\.\:\)]|$)/g;
+    // MCQ: find options A, B, C, D (supports inline, multiline, dotted .B., tabbed, and underlined <u>A</u>. / <u>A.</u>)
+    const optRegex = /(?:^|[\s\t\.\,\;])(?:<u>)?([A-D])(?:<\/u>)?[\.\:\)]\s*([\s\S]*?)(?=(?:[\s\t\.\,\;]|^)(?:<u>)?[A-D](?:<\/u>)?[\.\:\)]|$)/g;
     const matches = Array.from(content.matchAll(optRegex));
 
     if (matches.length >= 2) {
       options = matches.slice(0, 4).map(m => {
-        const optText = m[2].replace(/<\/?u>/g, '').replace(/\n/g, ' ').trim();
+        let optText = m[2].replace(/<\/?u>/g, '').replace(/\n/g, ' ').trim();
+        // Remove trailing dots, commas, semicolons that belonged to word formatting
+        optText = optText.replace(/^[\.\,\;\s]+/, '').replace(/[\.\,\;\s]+$/, '').trim();
         return {
           id: m[1].toUpperCase(),
           content: optText,
@@ -792,7 +794,7 @@ function processQuestionBlock(
       });
 
       // Strip options from main question content
-      const firstOptIndex = content.search(/(?:^|\s|\t)(?:<u>)?[A-D](?:<\/u>)?[\.\:\)]/);
+      const firstOptIndex = content.search(/(?:^|[\s\t\.\,\;])(?:<u>)?[A-D](?:<\/u>)?[\.\:\)]/);
       if (firstOptIndex !== -1) {
         content = content.substring(0, firstOptIndex).trim();
       }
@@ -832,7 +834,7 @@ function processQuestionBlock(
     }
 
     return {
-      id: `imported_q_${part}_${questionNumber}_${Date.now()}`,
+      id: `imported_q_${part}_${questionNumber}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
       part: 1,
       questionNumber,
       type: QuestionType.MULTIPLE_CHOICE,
@@ -849,13 +851,13 @@ function processQuestionBlock(
   }
 
   if (part === 2) {
-    // True / False: items a), b), c), d)
-    const tfRegex = /(?:^|\s|\t)([a-d])[\.\:\)]\s*([\s\S]*?)(?=(?:\s|\t)[a-d][\.\:\)]|$)/g;
+    // True / False: items a), b), c), d) or a., b., c., d.
+    const tfRegex = /(?:^|[\s\t\.\,\;])([a-d])[\.\:\)]\s*([\s\S]*?)(?=(?:[\s\t\.\,\;]|^)[a-d][\.\:\)]|$)/g;
     const matches = Array.from(content.matchAll(tfRegex));
 
     if (matches.length >= 2) {
       trueFalseItems = matches.slice(0, 4).map(m => {
-        const subContent = m[2].replace(/\n/g, ' ').trim();
+        let subContent = m[2].replace(/\n/g, ' ').trim();
         const lower = subContent.toLowerCase();
 
         const isExplicitFalse = (
@@ -863,7 +865,9 @@ function processQuestionBlock(
           lower.includes('[sai]') ||
           lower.includes('(s)') ||
           lower.includes('[s]') ||
-          lower.includes('-> sai')
+          lower.includes('-> sai') ||
+          lower.endsWith(': sai') ||
+          lower.endsWith('. sai')
         );
         const isExplicitTrue = (
           lower.includes('(đúng)') ||
@@ -874,7 +878,9 @@ function processQuestionBlock(
           lower.includes('[đ]') ||
           lower.includes('(d)') ||
           lower.includes('[d]') ||
-          lower.includes('-> đúng')
+          lower.includes('-> đúng') ||
+          lower.endsWith(': đúng') ||
+          lower.endsWith('. đúng')
         );
 
         let isCorrect: boolean | undefined = undefined;
@@ -886,6 +892,7 @@ function processQuestionBlock(
 
         const cleanContent = subContent
           .replace(/[\(\[]\s*(đúng|sai|dung|đ|s|d)\s*[\)\]]/gi, '')
+          .replace(/[\:\.]\s*(đúng|sai|dung)\s*$/gi, '')
           .replace(/\s+/g, ' ')
           .trim();
 
@@ -897,7 +904,7 @@ function processQuestionBlock(
         };
       });
 
-      const firstTfIndex = content.search(/(?:^|\s|\t)[a-d][\.\:\)]/);
+      const firstTfIndex = content.search(/(?:^|[\s\t\.\,\;])[a-d][\.\:\)]/);
       if (firstTfIndex !== -1) {
         content = content.substring(0, firstTfIndex).trim();
       }
@@ -926,7 +933,7 @@ function processQuestionBlock(
     }
 
     return {
-      id: `imported_q_${part}_${questionNumber}_${Date.now()}`,
+      id: `imported_q_${part}_${questionNumber}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
       part: 2,
       questionNumber,
       type: QuestionType.TRUE_FALSE,
@@ -942,15 +949,15 @@ function processQuestionBlock(
   }
 
   if (part === 3) {
-    // Short Answer
+    // Short Answer: Extract "Đáp án: 407", "Đáp số: 71,3", "Kết quả: 4500"
     let ans = '';
-    const ansMatch = (solution || block).match(/(?:đáp số|kết quả|đáp án|kết luận)[\:\=\s]+([^\n\r]+)/i);
+    const ansMatch = (solution || block).match(/(?:đáp số|kết quả|đáp án|kết luận|da|ds)[\:\=\s]+([^\n\r]+)/i);
     if (ansMatch) {
       ans = ansMatch[1].trim();
       ans = ans.replace(/^[\:\=\s]+/, '').replace(/[\.\;\,]+$/, '').trim();
     }
 
-    content = content.replace(/(?:đáp số|kết quả|đáp án|kết luận)[\:\=\s]+[^\n\r]+/gi, '').trim();
+    content = content.replace(/(?:đáp số|kết quả|đáp án|kết luận|da|ds)[\:\=\s]+[^\n\r]+/gi, '').trim();
 
     if (!ans) {
       validationIssues.push({
@@ -969,7 +976,7 @@ function processQuestionBlock(
     }
 
     return {
-      id: `imported_q_${part}_${questionNumber}_${Date.now()}`,
+      id: `imported_q_${part}_${questionNumber}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
       part: 3,
       questionNumber,
       type: QuestionType.SHORT_ANSWER,

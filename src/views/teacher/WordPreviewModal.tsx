@@ -524,46 +524,79 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
                       </div>
                     )}
 
-                    {/* Part I Options */}
+                    {/* Action Sub-divider (Azota Style) */}
+                    <div className="relative flex py-3 items-center my-2">
+                      <div className="flex-grow border-t border-slate-200"></div>
+                      <span className="flex-shrink mx-4 text-slate-700 text-xs font-semibold">
+                        {q.part === 1 && 'Chọn một đáp án đúng'}
+                        {q.part === 2 && 'Chọn đúng hoặc sai'}
+                        {q.part === 3 && 'Nhập đáp án'}
+                        {q.part === 4 && 'Hướng dẫn chấm / Tự luận'}
+                      </span>
+                      <div className="flex-grow border-t border-slate-200"></div>
+                    </div>
+
+                    {/* Part I Options (Azota Layout) */}
                     {q.part === 1 && q.options && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1">
+                      <div className="space-y-2.5 text-xs pt-1">
                         {q.options.map((opt) => (
                           <div
                             key={opt.id}
-                            className={`p-2.5 rounded-xl border flex items-start gap-2 ${
-                              opt.id === q.correctOption
-                                ? 'bg-emerald-50 border-emerald-300 font-bold text-emerald-900'
-                                : 'bg-slate-50 border-slate-200 text-slate-700'
-                            }`}
+                            className="flex items-center gap-2.5"
                           >
-                            <span className="font-black">{opt.id}.</span>
-                            <MathRenderer blocks={opt.contentBlocks} content={opt.content} />
+                            <span
+                              className={`w-7 h-7 rounded-full border-2 flex items-center justify-center font-bold text-xs shrink-0 transition-all ${
+                                opt.id === q.correctOption
+                                  ? 'border-emerald-600 bg-emerald-600 text-white shadow-xs'
+                                  : 'border-slate-300 text-slate-700 bg-white'
+                              }`}
+                            >
+                              {opt.id}
+                            </span>
+                            <div
+                              className={`px-3.5 py-2 rounded-xl border text-xs font-medium ${
+                                opt.id === q.correctOption
+                                  ? 'border-emerald-400 bg-emerald-50/80 font-bold text-emerald-950 shadow-2xs'
+                                  : 'border-slate-200 bg-white text-slate-800'
+                              }`}
+                            >
+                              <MathRenderer blocks={opt.contentBlocks} content={opt.content} />
+                            </div>
                           </div>
                         ))}
                       </div>
                     )}
 
-                    {/* Part II True/False */}
+                    {/* Part II True/False (Azota Layout) */}
                     {q.part === 2 && q.trueFalseItems && (
-                      <div className="space-y-1 text-xs pt-1">
+                      <div className="space-y-2 text-xs pt-1">
                         {q.trueFalseItems.map((item) => (
                           <div
                             key={item.id}
-                            className="p-2 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2"
+                            className="flex items-center gap-2.5"
                           >
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold uppercase text-slate-800">{item.id})</span>
-                              <MathRenderer blocks={item.contentBlocks} content={item.content} />
+                            <div className="flex-1 p-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 flex items-start gap-2 shadow-2xs">
+                              <span className="font-bold shrink-0">{item.id})</span>
+                              <div className="leading-relaxed">
+                                <MathRenderer blocks={item.contentBlocks} content={item.content} />
+                              </div>
                             </div>
-                            <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
-                              item.correctAnswer === true
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : item.correctAnswer === false
-                                ? 'bg-rose-100 text-rose-700'
-                                : 'bg-amber-100 text-amber-700'
-                            }`}>
-                              {item.correctAnswer === true ? 'ĐÚNG' : item.correctAnswer === false ? 'SAI' : 'CHƯA XÁC ĐỊNH'}
-                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className={`px-3 py-1 rounded-full border text-[11px] font-bold ${
+                                item.correctAnswer === true
+                                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                  : 'bg-white text-slate-600 border-slate-200'
+                              }`}>
+                                Đúng
+                              </span>
+                              <span className={`px-3 py-1 rounded-full border text-[11px] font-bold ${
+                                item.correctAnswer === false
+                                  ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                                  : 'bg-white text-slate-600 border-slate-200'
+                              }`}>
+                                Sai
+                              </span>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -571,8 +604,8 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
 
                     {/* Part III Short Answer */}
                     {q.part === 3 && q.shortAnswerConfig && (
-                      <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700">
-                        Đáp án đúng: <strong>{q.shortAnswerConfig.correctAnswers.join(' hoặc ') || '(Chưa có)'}</strong>
+                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700">
+                        Đáp án đúng: <strong className="text-indigo-700 font-mono text-sm">{q.shortAnswerConfig.correctAnswers.join(' hoặc ') || '(Chưa xác định)'}</strong>
                       </div>
                     )}
 
