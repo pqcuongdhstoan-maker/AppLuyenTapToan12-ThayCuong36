@@ -650,7 +650,7 @@ export const ExamTakingView: React.FC<ExamTakingViewProps> = ({
             </div>
 
             {/* Optional Image */}
-            {currentQuestion.imageUrl && (
+            {currentQuestion.imageUrl && !currentQuestion.content.includes(currentQuestion.imageUrl) && (
               <div className="mb-4">
                 <img
                   src={currentQuestion.imageUrl}

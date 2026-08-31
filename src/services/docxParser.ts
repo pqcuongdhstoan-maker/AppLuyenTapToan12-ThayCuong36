@@ -495,6 +495,7 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
         const imgId = getAttr(vImgs[v], 'id') || getAttr(vImgs[v], 'href');
         if (imgId && imageMap[imgId]) {
           pBlocks.push({ type: 'image', url: imageMap[imgId], alt: 'Hình minh họa' });
+          pText += ` ![Hình minh họa](${imageMap[imgId]}) `;
         }
       }
       return { text: pText, blocks: pBlocks, hasLowConfidenceMath: pLowConfidence };
@@ -507,6 +508,7 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
         const embedId = getAttr(blipNodes[b], 'embed') || getAttr(blipNodes[b], 'id');
         if (embedId && imageMap[embedId]) {
           pBlocks.push({ type: 'image', url: imageMap[embedId], alt: 'Hình minh họa' });
+          pText += ` ![Hình minh họa](${imageMap[embedId]}) `;
         }
       }
       return { text: pText, blocks: pBlocks, hasLowConfidenceMath: pLowConfidence };
@@ -761,6 +763,13 @@ function processQuestionBlock(
   let content = lines.join('\n');
   content = content.replace(/^(?:\[|\()? *(?:câu|cau|bài|bai|question) *\d+ *[\.\:\-\]\)]\s*/i, '').trim();
 
+  // Clean any stray \Upsilon or corrupted \mathbb{R} \Upsilon
+  content = content
+    .replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}')
+    .replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}')
+    .replace(/\\Upsilon\b/g, '')
+    .replace(/\\mathbb\{R\}\s*\?/g, '\\mathbb{R}');
+
   let options: QuestionOption[] = [];
   let correctOption: string | null = null;
   let trueFalseItems: TrueFalseItem[] = [];
@@ -786,6 +795,10 @@ function processQuestionBlock(
         let optText = m[2].replace(/<\/?u>/g, '').replace(/\n/g, ' ').trim();
         // Remove trailing dots, commas, semicolons that belonged to word formatting
         optText = optText.replace(/^[\.\,\;\s]+/, '').replace(/[\.\,\;\s]+$/, '').trim();
+        optText = optText
+          .replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}')
+          .replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}')
+          .replace(/\\Upsilon\b/g, '');
         return {
           id: m[1].toUpperCase(),
           content: optText,
@@ -802,6 +815,15 @@ function processQuestionBlock(
       validationIssues.push({
         questionIndex: questionNumber,
         message: `Phần I - Câu ${questionNumber}: Không tìm thấy đủ 4 phương án A, B, C, D`,
+        severity: 'error'
+      });
+    }
+
+    // Check if any option is empty
+    if (options.some(o => !o.content || !o.content.trim())) {
+      validationIssues.push({
+        questionIndex: questionNumber,
+        message: `Phần I - Câu ${questionNumber}: Có phương án lựa chọn bị trống nội dung`,
         severity: 'error'
       });
     }
@@ -841,7 +863,6 @@ function processQuestionBlock(
       difficulty: DifficultyLevel.THONG_HIEU,
       points: 0.25,
       content: content.trim(),
-      contentBlocks: rawBlocks,
       options,
       correctOption,
       solution,
@@ -893,6 +914,9 @@ function processQuestionBlock(
         const cleanContent = subContent
           .replace(/[\(\[]\s*(đúng|sai|dung|đ|s|d)\s*[\)\]]/gi, '')
           .replace(/[\:\.]\s*(đúng|sai|dung)\s*$/gi, '')
+          .replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}')
+          .replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}')
+          .replace(/\\Upsilon\b/g, '')
           .replace(/\s+/g, ' ')
           .trim();
 
@@ -940,7 +964,6 @@ function processQuestionBlock(
       difficulty: DifficultyLevel.THONG_HIEU,
       points: 1.0,
       content: content.trim(),
-      contentBlocks: rawBlocks,
       trueFalseItems,
       solution,
       imageUrl: firstImage,
@@ -983,7 +1006,6 @@ function processQuestionBlock(
       difficulty: DifficultyLevel.VAN_DUNG,
       points: 0.5,
       content: content.trim(),
-      contentBlocks: rawBlocks,
       shortAnswerConfig: {
         correctAnswers: ans ? [ans] : []
       },
@@ -1010,7 +1032,6 @@ function processQuestionBlock(
     difficulty: DifficultyLevel.VAN_DUNG,
     points: 1.5,
     content: content.trim(),
-    contentBlocks: rawBlocks,
     essayGuide: solution || 'Giáo viên chấm điểm theo các bước biến đổi và kết luận chính xác.',
     solution,
     imageUrl: firstImage,

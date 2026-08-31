@@ -64,7 +64,7 @@ const SYMBOL_FONT_MAP: { [code: number]: string } = {
   0x7D: '}',
   0x7E: '\\sim',
   0xA0: ' ',
-  0xA1: '\\Upsilon',
+  0xA1: '',
   0xA2: "'",
   0xA3: '\\le',
   0xA4: '/',
@@ -355,8 +355,9 @@ export class MtefDecoder {
     res = res.replace(/\\right\s*\)/g, ')');
     res = res.replace(/^\(+/, '(');
     res = res.replace(/\)+$/, ')');
-    res = res.replace(/\(\s*-\s*\\infty/g, '(-\\infty');
-    res = res.replace(/\(\s*\+\s*\\infty/g, '(+\\infty');
+    res = res.replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}');
+    res = res.replace(/\\Upsilon\b/g, '');
+    res = res.replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}');
     return res.trim();
   }
 }

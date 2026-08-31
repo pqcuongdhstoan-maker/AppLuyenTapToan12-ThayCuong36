@@ -390,6 +390,85 @@ export function renderLatexTableToHtml(rawTable: string): string {
   return html;
 }
 
+export function renderFormattedText(content: string): string {
+  if (!content) return '';
+  try {
+    const processedText = preprocessMathContent(content);
+
+    // Split text by markdown images: ![alt](url)
+    // and math delimiters: $$...$$ or $...$
+    const regex = /(!\[[^\]]*\]\([^)]+\)|\$\$[\s\S]*?\$\$|\$[^\$\n]+?\$)/g;
+    const parts = processedText.split(regex);
+
+    const htmlChunks = parts.map((part) => {
+      if (!part) return '';
+
+      // 1. Markdown Image: ![alt](url)
+      const imgMatch = part.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+      if (imgMatch) {
+        const alt = imgMatch[1] || 'Đồ thị / Hình vẽ minh họa';
+        const src = imgMatch[2];
+        return `<div class="my-3 flex flex-col items-center justify-center">
+          <img src="${src}" alt="${escapeHtml(alt)}" class="max-h-72 object-contain rounded-2xl border border-slate-200 shadow-xs bg-white p-2 hover:scale-[1.02] transition-transform duration-200 cursor-pointer" />
+          <span class="text-[11px] text-slate-500 mt-1.5 font-medium italic">${escapeHtml(alt)}</span>
+        </div>`;
+      }
+
+      // 2. Block math: $$...$$ (including variation tables and matrices)
+      if (part.startsWith('$$') && part.endsWith('$$') && part.length >= 4) {
+        const rawMath = part.slice(2, -2).trim();
+
+        if (rawMath.includes('\\begin{array}') || rawMath.includes('\\begin{tabular}') || (rawMath.includes('&') && rawMath.includes('\\\\'))) {
+          return renderLatexTableToHtml(rawMath);
+        }
+
+        try {
+          const cleanMath = rawMath.replace(/\$/g, '');
+          const mathHtml = katex.renderToString(cleanMath, {
+            displayMode: true,
+            throwOnError: false,
+            strict: false,
+            trust: true,
+            output: 'html'
+          });
+
+          return `<div class="my-2 overflow-x-auto py-1 text-center">${mathHtml}</div>`;
+        } catch {
+          return `<div class="katex-error text-rose-500 font-mono text-xs my-1 p-2 bg-rose-50 rounded-lg">[Lỗi công thức: ${escapeHtml(rawMath)}]</div>`;
+        }
+      }
+
+      // 3. Inline math: $...$
+      if (part.startsWith('$') && part.endsWith('$') && part.length >= 2) {
+        const rawMath = part.slice(1, -1).trim();
+        try {
+          const cleanMath = rawMath.replace(/\$/g, '');
+          return katex.renderToString(cleanMath, {
+            displayMode: false,
+            throwOnError: false,
+            strict: false,
+            trust: true,
+            output: 'html'
+          });
+        } catch {
+          return `<span class="katex-error text-rose-500 font-mono text-xs">[${escapeHtml(rawMath)}]</span>`;
+        }
+      }
+
+      // 4. Plain text: check if plain text has un-delimited tabular or array
+      if (part.includes('\\begin{tabular}') || part.includes('\\begin{array}')) {
+        return renderLatexTableToHtml(part);
+      }
+
+      return escapeHtml(part).replace(/\n/g, '<br/>');
+    });
+
+    return htmlChunks.join('');
+  } catch {
+    return escapeHtml(content);
+  }
+}
+
 export const MathRenderer: React.FC<MathRendererProps> = ({ content, blocks, className = '', inline = false }) => {
   const renderedHtml = useMemo(() => {
     try {
@@ -398,7 +477,7 @@ export const MathRenderer: React.FC<MathRendererProps> = ({ content, blocks, cla
         const htmlList = blocks.map((block) => {
           if (!block) return '';
           if (block.type === 'text') {
-            return escapeHtml(block.value || '').replace(/\n/g, '<br/>');
+            return renderFormattedText(block.value || '');
           }
           if (block.type === 'math') {
             const rawMath = (block.latex || '').trim();
@@ -439,84 +518,7 @@ export const MathRenderer: React.FC<MathRendererProps> = ({ content, blocks, cla
 
     // 2. Fallback to processing content string
     if (!content) return '';
-
-    try {
-      const processedText = preprocessMathContent(content);
-
-      // Split text by markdown images: ![alt](url)
-      // and math delimiters: $$...$$ or $...$
-      const regex = /(!\[[^\]]*\]\([^)]+\)|\$\$[\s\S]*?\$\$|\$[^\$\n]+?\$)/g;
-      const parts = processedText.split(regex);
-
-      const htmlChunks = parts.map((part) => {
-        if (!part) return '';
-
-        // 1. Markdown Image: ![alt](url)
-        const imgMatch = part.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
-        if (imgMatch) {
-          const alt = imgMatch[1] || 'Đồ thị / Hình vẽ minh họa';
-          const src = imgMatch[2];
-          return `<div class="my-3 flex flex-col items-center justify-center">
-            <img src="${src}" alt="${escapeHtml(alt)}" class="max-h-72 object-contain rounded-2xl border border-slate-200 shadow-xs bg-white p-2 hover:scale-[1.02] transition-transform duration-200 cursor-pointer" />
-            <span class="text-[11px] text-slate-500 mt-1.5 font-medium italic">${escapeHtml(alt)}</span>
-          </div>`;
-        }
-
-        // 2. Block math: $$...$$ (including variation tables and matrices)
-        if (part.startsWith('$$') && part.endsWith('$$') && part.length >= 4) {
-          const rawMath = part.slice(2, -2).trim();
-
-          // Check if this block is a variation table or array table
-          if (rawMath.includes('\\begin{array}') || rawMath.includes('\\begin{tabular}') || (rawMath.includes('&') && rawMath.includes('\\\\'))) {
-            return renderLatexTableToHtml(rawMath);
-          }
-
-          try {
-            // Strip inner $ if any
-            const cleanMath = rawMath.replace(/\$/g, '');
-            const mathHtml = katex.renderToString(cleanMath, {
-              displayMode: true,
-              throwOnError: false,
-              strict: false,
-              trust: true,
-              output: 'html'
-            });
-
-            return `<div class="my-2 overflow-x-auto py-1 text-center">${mathHtml}</div>`;
-          } catch {
-            return `<div class="katex-error text-rose-500 font-mono text-xs my-1 p-2 bg-rose-50 rounded-lg">[Lỗi công thức: ${escapeHtml(rawMath)}]</div>`;
-          }
-        }
-
-        // 3. Inline math: $...$
-        if (part.startsWith('$') && part.endsWith('$') && part.length >= 2) {
-          const rawMath = part.slice(1, -1).trim();
-          try {
-            const cleanMath = rawMath.replace(/\$/g, '');
-            return katex.renderToString(cleanMath, {
-              displayMode: false,
-              throwOnError: false,
-              strict: false,
-              trust: true,
-              output: 'html'
-            });
-          } catch {
-            return `<span class="katex-error text-rose-500 font-mono text-xs">[${escapeHtml(rawMath)}]</span>`;
-          }
-        }
-
-        // 4. Plain text: check if plain text has un-delimited tabular or array
-        if (part.includes('\\begin{tabular}') || part.includes('\\begin{array}')) {
-          return renderLatexTableToHtml(part);
-        }
-
-        return escapeHtml(part).replace(/\n/g, '<br/>');
-      });
-
-      return htmlChunks.join('');
-    } catch {
-      return escapeHtml(content);
-    }
+    return renderFormattedText(content);
   }, [content, blocks]);
 
   if (inline) {
