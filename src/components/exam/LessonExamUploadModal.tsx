@@ -472,8 +472,8 @@ Yêu cầu số lượng câu:
                 {isProcessingWord ? (
                   <div className="py-6 space-y-3">
                     <div className="w-10 h-10 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
-                    <div className="text-sm font-bold text-slate-800">Đang phân tích cấu trúc Word & công thức OMML...</div>
-                    <div className="text-xs text-slate-400">Tự động chuyển đổi công thức sang LaTeX $...$ và tách 4 phần đề thi</div>
+                    <div className="text-sm font-bold text-slate-800">Đang phân tích cấu trúc Word &amp; công thức MathType...</div>
+                    <div className="text-xs text-slate-400">Tự động nhận diện công thức MathType / Microsoft Equation và bóc tách 4 phần đề thi</div>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -587,7 +587,7 @@ Yêu cầu số lượng câu:
                   <span>Tự động sinh đề thi chuẩn theo CT GDPT 2018 bằng Gemini AI</span>
                 </div>
                 <p className="text-purple-700 text-[11px] leading-relaxed">
-                  AI sẽ xây dựng toàn bộ câu hỏi cho chuyên đề <strong>"{lesson.title}"</strong> với đầy đủ 4 dạng đề thi, công thức toán chuẩn LaTeX và lời giải chi tiết từng bước.
+                  AI sẽ xây dựng toàn bộ câu hỏi cho chuyên đề <strong>"{lesson.title}"</strong> với đầy đủ 4 dạng đề thi, công thức toán chuẩn MathType và lời giải chi tiết từng bước.
                 </p>
               </div>
 

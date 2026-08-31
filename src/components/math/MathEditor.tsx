@@ -143,7 +143,7 @@ export const MathEditor: React.FC<MathEditorProps> = ({
               className="w-full text-sm font-mono text-slate-800 focus:outline-hidden resize-y placeholder:text-slate-400 bg-transparent leading-relaxed"
             />
             <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400">
-              <span>Hỗ trợ định dạng LaTeX: <code>$công_thức$</code> hoặc <code>$$khối_công_thức$$</code></span>
+              <span>Hỗ trợ công thức MathType trực quan &amp; ký hiệu toán học</span>
               <span>{value.length} ký tự</span>
             </div>
           </div>
