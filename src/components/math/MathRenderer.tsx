@@ -392,44 +392,49 @@ export function renderLatexTableToHtml(rawTable: string): string {
 
 export const MathRenderer: React.FC<MathRendererProps> = ({ content, blocks, className = '', inline = false }) => {
   const renderedHtml = useMemo(() => {
-    // 1. If blocks array is provided, render each block sequentially
-    if (blocks && blocks.length > 0) {
-      const htmlList = blocks.map((block) => {
-        if (block.type === 'text') {
-          return escapeHtml(block.value || '').replace(/\n/g, '<br/>');
-        }
-        if (block.type === 'math') {
-          const rawMath = (block.latex || '').trim();
-          if (!rawMath) return '';
-          if (rawMath.includes('\\begin{array}') || rawMath.includes('\\begin{tabular}') || (rawMath.includes('&') && rawMath.includes('\\\\'))) {
-            return renderLatexTableToHtml(rawMath);
+    try {
+      // 1. If blocks array is provided, render each block sequentially
+      if (blocks && Array.isArray(blocks) && blocks.length > 0) {
+        const htmlList = blocks.map((block) => {
+          if (!block) return '';
+          if (block.type === 'text') {
+            return escapeHtml(block.value || '').replace(/\n/g, '<br/>');
           }
-          try {
-            return katex.renderToString(rawMath.replace(/\$/g, ''), {
-              displayMode: false,
-              throwOnError: false,
-              strict: false,
-              trust: true,
-              output: 'html'
-            });
-          } catch {
-            return `<span class="katex-error text-rose-500 font-mono text-xs">[Lỗi công thức: ${escapeHtml(rawMath)}]</span>`;
+          if (block.type === 'math') {
+            const rawMath = (block.latex || '').trim();
+            if (!rawMath) return '';
+            if (rawMath.includes('\\begin{array}') || rawMath.includes('\\begin{tabular}') || (rawMath.includes('&') && rawMath.includes('\\\\'))) {
+              return renderLatexTableToHtml(rawMath);
+            }
+            try {
+              return katex.renderToString(rawMath.replace(/\$/g, ''), {
+                displayMode: false,
+                throwOnError: false,
+                strict: false,
+                trust: true,
+                output: 'html'
+              });
+            } catch {
+              return `<span class="katex-error text-rose-500 font-mono text-xs">[Lỗi công thức: ${escapeHtml(rawMath)}]</span>`;
+            }
           }
-        }
-        if (block.type === 'image') {
-          return `<div class="my-3 flex flex-col items-center justify-center">
-            <img src="${block.url}" alt="${escapeHtml(block.alt || 'Hình minh họa')}" class="max-h-72 object-contain rounded-2xl border border-slate-200 shadow-xs bg-white p-2" />
-            <span class="text-[11px] text-slate-500 mt-1.5 font-medium italic">${escapeHtml(block.alt || 'Hình minh họa')}</span>
-          </div>`;
-        }
-        if (block.type === 'warning') {
-          return `<div class="my-2 p-2.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs flex items-center gap-2 font-medium">
-            <span>⚠️ ${escapeHtml(block.warningMessage || 'Cảnh báo đối tượng')}</span>
-          </div>`;
-        }
-        return '';
-      });
-      return htmlList.join(' ');
+          if (block.type === 'image') {
+            return `<div class="my-3 flex flex-col items-center justify-center">
+              <img src="${block.url || ''}" alt="${escapeHtml(block.alt || 'Hình minh họa')}" class="max-h-72 object-contain rounded-2xl border border-slate-200 shadow-xs bg-white p-2" />
+              <span class="text-[11px] text-slate-500 mt-1.5 font-medium italic">${escapeHtml(block.alt || 'Hình minh họa')}</span>
+            </div>`;
+          }
+          if (block.type === 'warning') {
+            return `<div class="my-2 p-2.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs flex items-center gap-2 font-medium">
+              <span>⚠️ ${escapeHtml(block.warningMessage || 'Cảnh báo đối tượng')}</span>
+            </div>`;
+          }
+          return '';
+        });
+        return htmlList.join(' ');
+      }
+    } catch (e) {
+      console.warn('MathRenderer blocks render warning:', e);
     }
 
     // 2. Fallback to processing content string

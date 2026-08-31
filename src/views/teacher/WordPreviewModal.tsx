@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   CheckCircle,
   AlertTriangle,
@@ -11,7 +11,10 @@ import {
   ArrowRight,
   HelpCircle,
   Plus,
-  Image as ImageIcon
+  Image as ImageIcon,
+  AlertOctagon,
+  FileCode,
+  Check
 } from 'lucide-react';
 import { DocxParsedExam } from '../../services/docxParser';
 import { Lesson, Exam, Question, QuestionType, QuestionOption, TrueFalseItem } from '../../types';
@@ -44,6 +47,12 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
   const [editingShortAnswer, setEditingShortAnswer] = useState<string>('');
   const [editingImageUrl, setEditingImageUrl] = useState<string>('');
   const [timeLimit, setTimeLimit] = useState(45);
+
+  useEffect(() => {
+    if (parsedData?.questions) {
+      setQuestions(parsedData.questions);
+    }
+  }, [parsedData]);
 
   if (!isOpen || !parsedData) return null;
 
