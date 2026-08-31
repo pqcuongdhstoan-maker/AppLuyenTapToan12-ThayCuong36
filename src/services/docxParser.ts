@@ -505,10 +505,8 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
             pBlocks.push({ type: 'math', latex });
           } else if (imageMap[imgId]) {
             const url = imageMap[imgId];
-            const isSvg = url.startsWith('data:image/svg+xml');
-            const altText = isSvg ? 'Công thức MathType' : 'Hình minh họa';
-            pBlocks.push({ type: 'image', url, alt: altText });
-            pText += ` ![${altText}](${url}) `;
+            pBlocks.push({ type: 'image', url });
+            pText += ` ![](${url}) `;
           }
         }
       }
@@ -527,10 +525,8 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
             pBlocks.push({ type: 'math', latex });
           } else if (imageMap[embedId]) {
             const url = imageMap[embedId];
-            const isSvg = url.startsWith('data:image/svg+xml');
-            const altText = isSvg ? 'Công thức MathType' : 'Hình minh họa';
-            pBlocks.push({ type: 'image', url, alt: altText });
-            pText += ` ![${altText}](${url}) `;
+            pBlocks.push({ type: 'image', url });
+            pText += ` ![](${url}) `;
           }
         }
       }
@@ -697,7 +693,8 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
     );
 
     if (q) {
-      questions.push(q);
+      const normalizedQ = normalizeImportedQuestion(q);
+      questions.push(normalizedQ);
       qNum++;
     }
 
@@ -1083,5 +1080,177 @@ function processQuestionBlock(
     solution,
     imageUrl: firstImage,
     needsTeacherCheck
+  };
+}
+
+/**
+ * Normalizes an imported question:
+ * - Cleans spurious placeholders ("Hình minh họa", broken alt texts, etc.)
+ * - Cleans duplicate boundary operators (==, ++, --, duplicate \infty)
+ * - Fixes function representation duplicate parens (f(x))) -> f(x))
+ * - Cleans and balances interval parentheses ((a; b)) -> (a; b)
+ * - Preserves valid mathematical constructs (f(g(x)), (x+1)^2, coordinates, intervals [a; b), [a; b])
+ * - Merges adjacent text blocks and logs diagnostic info in DEV
+ */
+export function normalizeImportedQuestion(q: Question): Question {
+  // 1. Clean question content string
+  let content = (q.content || '')
+    .replace(/!\[\s*Hình minh họa\s*\]/gi, '![]')
+    .replace(/!\[\s*Công thức MathType\s*\]/gi, '![]')
+    .replace(/Hình minh họa/gi, '')
+    // Fix duplicate signs
+    .replace(/y\s*==\s*/g, 'y = ')
+    .replace(/==+/g, '=')
+    .replace(/=\s*=/g, '=')
+    .replace(/--+/g, '-')
+    .replace(/\+\++/g, '+')
+    .replace(/(\\infty)+/g, '\\infty')
+    .replace(/-\s*\\infty/g, '-\\infty')
+    .replace(/\+\s*\\infty/g, '+\\infty')
+    // Fix function parentheses: f(x))) or f((x -> f(x)
+    .replace(/f'\s*\(+\s*x\s*\(?/g, "f'(x)")
+    .replace(/f\s*\(+\s*x\s*\(?/g, "f(x)")
+    .replace(/f\s*\(\s*x\s*\)\)+/g, "f(x)")
+    .replace(/f'\s*\(\s*x\s*\)\)+/g, "f'(x)")
+    .replace(/f\(\(x/g, "f(x)")
+    .replace(/f'\(\(x/g, "f'(x)")
+    // Clean sets and greek symbols
+    .replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}')
+    .replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}')
+    .replace(/\\Upsilon\b/g, '')
+    .replace(/\\mathbb\{R\}\s*\?/g, '\\mathbb{R}')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // 2. Clean contentBlocks
+  let contentBlocks = (q.contentBlocks || [])
+    .filter(b => {
+      if (b.type === 'text') return Boolean(b.value && b.value.trim());
+      if (b.type === 'math') return Boolean(b.latex && b.latex.trim());
+      if (b.type === 'image') return Boolean(b.url && b.url.trim());
+      if (b.type === 'warning') return Boolean(b.warningMessage && b.warningMessage.trim());
+      return true;
+    })
+    .map(b => {
+      if (b.type === 'text') {
+        let val = (b.value || '')
+          .replace(/Hình minh họa/gi, '')
+          .replace(/y\s*==\s*/g, 'y = ')
+          .replace(/==+/g, '=')
+          .replace(/\s+/g, ' ');
+        return { ...b, value: val };
+      }
+      if (b.type === 'math') {
+        let l = (b.latex || '')
+          .replace(/==+/g, '=')
+          .replace(/\(\(+/g, '(')
+          .replace(/\)\)+/g, ')')
+          .replace(/f'\s*\(+\s*x\s*\(?/g, "f'(x)")
+          .replace(/f\s*\(+\s*x\s*\(?/g, "f(x)");
+        return { ...b, latex: l.trim() };
+      }
+      if (b.type === 'image') {
+        const alt = (b.alt && !b.alt.includes('Hình minh họa') && !b.alt.includes('MathType')) ? b.alt : undefined;
+        return { ...b, alt };
+      }
+      return b;
+    });
+
+  // Merge consecutive text blocks
+  const mergedBlocks: ContentBlock[] = [];
+  for (const blk of contentBlocks) {
+    const prev = mergedBlocks[mergedBlocks.length - 1];
+    if (prev && prev.type === 'text' && blk.type === 'text') {
+      prev.value = ((prev.value || '') + ' ' + (blk.value || '')).trim();
+    } else {
+      mergedBlocks.push(blk);
+    }
+  }
+
+  // 3. Clean options (Part I)
+  let options = q.options?.map(opt => {
+    let optContent = opt.content
+      .replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}')
+      .replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}')
+      .replace(/\\Upsilon\b/g, '')
+      .replace(/\(\s*\.\s*\)/g, '')
+      .replace(/\(\s*\)/g, '')
+      .replace(/\(\s*$/, '')
+      .replace(/\s*\.\s*$/, '')
+      .replace(/\(\(+/g, '(')
+      .replace(/\)\)+/g, ')')
+      .replace(/--+/g, '-')
+      .replace(/\+\++/g, '+')
+      .replace(/-\\infty/g, '-\\infty')
+      .replace(/\+\\infty/g, '+\\infty')
+      .replace(/(\\infty)+/g, '\\infty')
+      .replace(/;\s*/g, '; ')
+      .trim();
+
+    if (optContent.includes(';') && !optContent.startsWith('(') && !optContent.startsWith('[')) {
+      optContent = '(' + optContent;
+    }
+    if (optContent.includes(';') && !optContent.endsWith(')') && !optContent.endsWith(']')) {
+      optContent = optContent + ')';
+    }
+
+    return {
+      ...opt,
+      content: optContent,
+      contentBlocks: [{ type: 'text' as const, value: optContent }]
+    };
+  });
+
+  // 4. Clean True/False items (Part II)
+  let trueFalseItems = q.trueFalseItems?.map(tf => {
+    let c = tf.content
+      .replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}')
+      .replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}')
+      .replace(/\\Upsilon\b/g, '')
+      .replace(/y\s*==\s*/g, 'y = ')
+      .replace(/==+/g, '=')
+      .replace(/f'\s*\(+\s*x\s*\(?/g, "f'(x)")
+      .replace(/f\s*\(+\s*x\s*\(?/g, "f(x)")
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return {
+      ...tf,
+      content: c,
+      contentBlocks: [{ type: 'text' as const, value: c }]
+    };
+  });
+
+  // 5. Clean solution
+  let solution = q.solution ? q.solution
+    .replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}')
+    .replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}')
+    .replace(/\\Upsilon\b/g, '')
+    .replace(/y\s*==\s*/g, 'y = ')
+    .replace(/==+/g, '=')
+    .replace(/f'\s*\(+\s*x\s*\(?/g, "f'(x)")
+    .replace(/f\s*\(+\s*x\s*\(?/g, "f(x)")
+    .trim() : undefined;
+
+  // Diagnostic log in dev
+  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production') {
+    console.log('[DocxParser Diagnostic]', {
+      questionNumber: q.questionNumber,
+      part: q.part,
+      detectedType: q.type,
+      blocksCount: mergedBlocks.length,
+      hasImage: Boolean(q.imageUrl),
+      optionsCount: options?.length,
+      tfCount: trueFalseItems?.length
+    });
+  }
+
+  return {
+    ...q,
+    content,
+    contentBlocks: mergedBlocks,
+    options,
+    trueFalseItems,
+    solution
   };
 }

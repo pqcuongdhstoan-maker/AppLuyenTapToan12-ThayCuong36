@@ -219,16 +219,28 @@ export class MtefDecoder {
 
       const sig = this.pos;
       let lineIdx = -1;
-      for (let i = sig + 4; i < Math.min(sig + 350, this.bytes.length - 2); i++) {
-        if (this.bytes[i] === 0x0A) {
-          lineIdx = i;
+
+      // First search for 0x0A 0x01 (RULER + LINE)
+      for (let i = sig + 4; i < Math.min(sig + 450, this.bytes.length - 2); i++) {
+        if (this.bytes[i] === 0x0A && this.bytes[i + 1] === 0x01) {
+          lineIdx = i + 1; // Start after 0x0A 0x01
           break;
         }
       }
 
-      // If no 0x0A (as in WMF embedded MTEF streams), search for font table END record (0x12, 0x00)
+      // Fallback to 0x0A
       if (lineIdx === -1) {
-        for (let i = sig + 4; i < Math.min(sig + 350, this.bytes.length - 2); i++) {
+        for (let i = sig + 4; i < Math.min(sig + 450, this.bytes.length - 2); i++) {
+          if (this.bytes[i] === 0x0A) {
+            lineIdx = i;
+            break;
+          }
+        }
+      }
+
+      // Fallback to 0x12 0x00 (font table END record)
+      if (lineIdx === -1) {
+        for (let i = sig + 4; i < Math.min(sig + 450, this.bytes.length - 2); i++) {
           if (this.bytes[i] === 0x12 && this.bytes[i + 1] === 0x00) {
             lineIdx = i + 1;
             break;
@@ -278,7 +290,6 @@ export class MtefDecoder {
 
   private parseTokenStream(): string {
     const tokens: string[] = [];
-    let hasOpenParen = false;
 
     while (this.pos < this.bytes.length) {
       // Check for End of stream in OLE / WMF container
@@ -292,10 +303,15 @@ export class MtefDecoder {
         for (let k = 0; k < 7; k++) sub += String.fromCharCode(this.bytes[this.pos + k]);
         if (sub.includes('System')) break;
       }
-
-      // Check consecutive zeros (stream termination)
-      if (this.bytes[this.pos] === 0 && this.pos + 1 < this.bytes.length && this.bytes[this.pos + 1] === 0) {
-        break;
+      if (this.bytes[this.pos] === 0x57 && this.pos + 6 < this.bytes.length) {
+        let sub = '';
+        for (let k = 0; k < 7; k++) sub += String.fromCharCode(this.bytes[this.pos + k]);
+        if (sub.includes('WinAll')) break;
+      }
+      if (this.bytes[this.pos] === 0x54 && this.pos + 14 < this.bytes.length) {
+        let sub = '';
+        for (let k = 0; k < 15; k++) sub += String.fromCharCode(this.bytes[this.pos + k]);
+        if (sub.includes('Times New Roman')) break;
       }
 
       // Check 16-bit unicode markers
@@ -318,6 +334,11 @@ export class MtefDecoder {
           this.pos += 2;
           continue;
         }
+        if (b0 === 0x08 && b1 === 0x22) {
+          tokens.push('\\in ');
+          this.pos += 2;
+          continue;
+        }
 
         const code16 = b0 | (b1 << 8);
         if (UNICODE_MAP[code16]) {
@@ -330,48 +351,50 @@ export class MtefDecoder {
       const b = this.bytes[this.pos++];
       if (b === 0) continue;
 
+      // Skip delimiter glyph indicators (0x96 0x28, 0x96 0x29) to prevent duplicate parentheses
+      if (b === 0x96 && this.pos < this.bytes.length && (this.bytes[this.pos] === 0x28 || this.bytes[this.pos] === 0x29)) {
+        this.pos++;
+        continue;
+      }
+
       if (b === 0x03) {
-        // TMPL template tag (parentheses, fraction, etc.)
-        hasOpenParen = true;
+        // TMPL template tag (parentheses, interval)
         tokens.push('(');
+      } else if (b === 0x27 || b === 0xA2) {
+        tokens.push("'");
+      } else if (b === 0xA5) {
+        tokens.push('\\infty');
+      } else if (b === 0xE2) {
+        tokens.push('\\mathbb{R}');
+      } else if (b === 0xBE) {
+        tokens.push('-');
+      } else if (b === 0xB1) {
+        tokens.push('\\pm');
+      } else if (b === 0x3D) {
+        tokens.push(' = ');
       } else if (b >= 40 && b <= 59) {
         // '(', ')', '*', '+', ',', '-', '.', '/', '0'..'9', ':', ';'
         tokens.push(String.fromCharCode(b));
       } else if ((b >= 65 && b <= 90) || (b >= 97 && b <= 122)) {
         // 'A'..'Z', 'a'..'z'
         tokens.push(String.fromCharCode(b));
-      } else if (b === 0xA5) {
-        tokens.push('\\infty');
-      } else if (b === 0xE2) {
-        tokens.push('\\mathbb{R}');
       } else if (SYMBOL_FONT_MAP[b]) {
         tokens.push(SYMBOL_FONT_MAP[b]);
       }
     }
 
-    let res = tokens.join('');
-    if (res.includes(';') && !res.startsWith('(')) {
-      res = '(' + res;
-    }
-    if (hasOpenParen && res.startsWith('(') && !res.endsWith(')')) {
-      res = res + ')';
-    }
+    const res = tokens.join('');
     return this.cleanLatex(res);
   }
 
   private cleanLatex(s: string): string {
     let res = s.trim();
+
     // 1. Remove embedded OLE garbage and system footers
     res = res.replace(/Equation\s*Native/gi, '');
-    if (res.includes('System')) {
-      res = res.substring(0, res.indexOf('System')).trim();
-    }
-    if (res.includes('Times New Roman')) {
-      res = res.substring(0, res.indexOf('Times New Roman')).trim();
-    }
-    if (res.includes('WinAll')) {
-      res = res.substring(0, res.indexOf('WinAll')).trim();
-    }
+    if (res.includes('System')) res = res.substring(0, res.indexOf('System')).trim();
+    if (res.includes('Times New Roman')) res = res.substring(0, res.indexOf('Times New Roman')).trim();
+    if (res.includes('WinAll')) res = res.substring(0, res.indexOf('WinAll')).trim();
 
     // 2. Remove empty and trailing parentheses from MathType delimiters
     res = res.replace(/\(\s*\.\s*\)/g, '');
@@ -386,9 +409,9 @@ export class MtefDecoder {
     res = res.replace(/\+\++/g, '+');
     res = res.replace(/==+/g, '=');
     res = res.replace(/=\s*=/g, '=');
+    res = res.replace(/-\\infty/g, '-\\infty');
+    res = res.replace(/\+\\infty/g, '+\\infty');
     res = res.replace(/(\\infty)+/g, '\\infty');
-    res = res.replace(/-\s*\\infty/g, '-\\infty');
-    res = res.replace(/\+\s*\\infty/g, '+\\infty');
     res = res.replace(/\\left\s*\(/g, '(');
     res = res.replace(/\\right\s*\)/g, ')');
 
@@ -403,6 +426,8 @@ export class MtefDecoder {
     res = res.replace(/f'\(x\(\)/g, "f'(x)");
     res = res.replace(/f\(\(x/g, 'f(x)');
     res = res.replace(/f'\(\(x/g, "f'(x)");
+    res = res.replace(/f'\s*\(\s*x\s*\)/g, "f'(x)");
+    res = res.replace(/f\s*\(\s*x\s*\)/g, "f(x)");
 
     // 6. Clean leading =
     res = res.replace(/^\s*=\s*/, '');
@@ -413,12 +438,13 @@ export class MtefDecoder {
     res = res.replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}');
 
     // 8. Ensure balanced interval parentheses (a; b)
-    if (res.includes(';') && !res.startsWith('(')) {
+    if (res.includes(';') && !res.startsWith('(') && !res.startsWith('[')) {
       res = '(' + res;
     }
-    if (res.includes(';') && !res.endsWith(')')) {
+    if (res.includes(';') && !res.endsWith(')') && !res.endsWith(']')) {
       res = res + ')';
     }
+
     return res.trim();
   }
 }

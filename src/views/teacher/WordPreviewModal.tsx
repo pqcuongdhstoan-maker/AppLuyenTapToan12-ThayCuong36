@@ -519,9 +519,17 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
                     </div>
 
                     {q.imageUrl && !q.content.includes(q.imageUrl) && !q.imageUrl.startsWith('data:image/svg+xml') && (
-                      <div className="my-2 flex justify-center">
-                        <img src={q.imageUrl} alt="Hình minh họa" className="max-h-56 object-contain rounded-xl border border-slate-200 p-1 bg-white shadow-2xs" />
-                      </div>
+                      <figure className="question-image my-3 flex flex-col items-center justify-center">
+                        <img
+                          src={q.imageUrl}
+                          alt=""
+                          className="max-h-72 max-w-full object-contain rounded-2xl border border-slate-200 shadow-xs bg-white p-2"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            if (e.currentTarget.parentElement) e.currentTarget.parentElement.style.display = 'none';
+                          }}
+                        />
+                      </figure>
                     )}
 
                     {/* Action Sub-divider (Azota Style) */}

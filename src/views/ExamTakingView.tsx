@@ -651,13 +651,17 @@ export const ExamTakingView: React.FC<ExamTakingViewProps> = ({
 
             {/* Optional Image (Diagrams only, not inline formula SVGs) */}
             {currentQuestion.imageUrl && !currentQuestion.content.includes(currentQuestion.imageUrl) && !currentQuestion.imageUrl.startsWith('data:image/svg+xml') && (
-              <div className="mb-4">
+              <figure className="question-image my-3 flex flex-col items-center justify-center">
                 <img
                   src={currentQuestion.imageUrl}
-                  alt={`Minh họa câu ${currentQuestion.questionNumber}`}
-                  className="max-h-72 object-contain rounded-xl border border-slate-200 p-1 bg-white shadow-2xs"
+                  alt=""
+                  className="max-h-72 max-w-full object-contain rounded-2xl border border-slate-200 shadow-xs bg-white p-2"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    if (e.currentTarget.parentElement) e.currentTarget.parentElement.style.display = 'none';
+                  }}
                 />
-              </div>
+              </figure>
             )}
 
             {/* Action Sub-divider (Azota Style) */}

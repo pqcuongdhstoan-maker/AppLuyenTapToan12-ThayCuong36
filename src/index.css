@@ -44,6 +44,75 @@
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
+/* Question Content, Images, and Responsive Answer Layouts */
+.question-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.question-text {
+  line-height: 1.65;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.question-text .katex,
+.math-content .katex {
+  vertical-align: baseline;
+}
+
+.question-image {
+  margin: 8px auto 16px;
+  text-align: center;
+  max-width: 100%;
+}
+
+.question-image img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  margin: 0 auto;
+}
+
+.question-image figcaption {
+  margin-top: 6px;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.answer-list {
+  display: grid;
+  gap: 12px;
+}
+
+.answer-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.true-false-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+@media (max-width: 640px) {
+  .true-false-row {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+
+  .true-false-actions {
+    grid-column: 2;
+  }
+}
+
 @media print {
   header, footer, nav, button, .btn-print, .no-print {
     display: none !important;
