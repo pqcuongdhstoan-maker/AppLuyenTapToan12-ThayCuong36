@@ -649,8 +649,8 @@ export const ExamTakingView: React.FC<ExamTakingViewProps> = ({
               <MathRenderer blocks={currentQuestion.contentBlocks} content={currentQuestion.content} />
             </div>
 
-            {/* Optional Image */}
-            {currentQuestion.imageUrl && !currentQuestion.content.includes(currentQuestion.imageUrl) && (
+            {/* Optional Image (Diagrams only, not inline formula SVGs) */}
+            {currentQuestion.imageUrl && !currentQuestion.content.includes(currentQuestion.imageUrl) && !currentQuestion.imageUrl.startsWith('data:image/svg+xml') && (
               <div className="mb-4">
                 <img
                   src={currentQuestion.imageUrl}

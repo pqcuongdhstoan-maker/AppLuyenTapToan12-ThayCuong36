@@ -406,11 +406,15 @@ export function renderFormattedText(content: string): string {
       // 1. Markdown Image: ![alt](url)
       const imgMatch = part.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
       if (imgMatch) {
-        const alt = imgMatch[1] || 'Đồ thị / Hình vẽ minh họa';
+        const alt = imgMatch[1] || '';
         const src = imgMatch[2];
+        const isInline = src.startsWith('data:image/svg+xml') || alt.toLowerCase().includes('công thức') || alt.toLowerCase().includes('mathtype');
+        if (isInline) {
+          return `<img src="${src}" alt="${escapeHtml(alt || 'Công thức')}" class="inline-block max-h-8 align-middle my-0.5 mx-1" />`;
+        }
         return `<div class="my-3 flex flex-col items-center justify-center">
-          <img src="${src}" alt="${escapeHtml(alt)}" class="max-h-72 object-contain rounded-2xl border border-slate-200 shadow-xs bg-white p-2 hover:scale-[1.02] transition-transform duration-200 cursor-pointer" />
-          <span class="text-[11px] text-slate-500 mt-1.5 font-medium italic">${escapeHtml(alt)}</span>
+          <img src="${src}" alt="${escapeHtml(alt || 'Đồ thị / Hình vẽ minh họa')}" class="max-h-72 object-contain rounded-2xl border border-slate-200 shadow-xs bg-white p-2 hover:scale-[1.02] transition-transform duration-200 cursor-pointer" />
+          ${alt ? `<span class="text-[11px] text-slate-500 mt-1.5 font-medium italic">${escapeHtml(alt)}</span>` : ''}
         </div>`;
       }
 
@@ -498,9 +502,13 @@ export const MathRenderer: React.FC<MathRendererProps> = ({ content, blocks, cla
             }
           }
           if (block.type === 'image') {
+            const isInline = (block.url || '').startsWith('data:image/svg+xml') || (block.alt || '').toLowerCase().includes('công thức') || (block.alt || '').toLowerCase().includes('mathtype');
+            if (isInline) {
+              return `<img src="${block.url || ''}" alt="${escapeHtml(block.alt || 'Công thức')}" class="inline-block max-h-8 align-middle my-0.5 mx-1" />`;
+            }
             return `<div class="my-3 flex flex-col items-center justify-center">
               <img src="${block.url || ''}" alt="${escapeHtml(block.alt || 'Hình minh họa')}" class="max-h-72 object-contain rounded-2xl border border-slate-200 shadow-xs bg-white p-2" />
-              <span class="text-[11px] text-slate-500 mt-1.5 font-medium italic">${escapeHtml(block.alt || 'Hình minh họa')}</span>
+              ${block.alt ? `<span class="text-[11px] text-slate-500 mt-1.5 font-medium italic">${escapeHtml(block.alt)}</span>` : ''}
             </div>`;
           }
           if (block.type === 'warning') {

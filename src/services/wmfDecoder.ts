@@ -178,13 +178,49 @@ export class WmfDecoder {
             const strLen = this.readInt16(paramPos);
             let textStr = '';
             for (let s = 0; s < strLen; s++) {
-              textStr += String.fromCharCode(this.bytes[paramPos + 2 + s]);
+              const code = this.bytes[paramPos + 2 + s];
+              if (code === 0xA5) textStr += '∞';
+              else if (code === 0xBE) textStr += '-';
+              else if (code === 0xB1) textStr += '±';
+              else if (code >= 32 && code <= 126) textStr += String.fromCharCode(code);
             }
             const y = this.readInt16(paramPos + 2 + ((strLen + 1) & ~1));
             const x = this.readInt16(paramPos + 4 + ((strLen + 1) & ~1));
+            const fontSize = Math.max(12, Math.min(height, 22));
             svgElements.push(
-              `<text x="${x}" y="${y}" fill="${currentTextColor}" font-size="14" font-family="sans-serif">${this.escapeXml(textStr)}</text>`
+              `<text x="${x}" y="${y + fontSize * 0.8}" fill="${currentTextColor}" font-size="${fontSize}" font-family="Cambria Math, Times New Roman, serif">${this.escapeXml(textStr)}</text>`
             );
+            break;
+          }
+
+          case 0x0A32: { // META_EXTTEXTOUT
+            const y = this.readInt16(paramPos);
+            const x = this.readInt16(paramPos + 2);
+            const strLen = this.readInt16(paramPos + 4);
+            const fwOpts = this.readUint16(paramPos + 6);
+            let strOffset = paramPos + 8;
+            if ((fwOpts & 0x0006) !== 0) {
+              strOffset = paramPos + 16;
+            }
+            let textStr = '';
+            for (let s = 0; s < strLen; s++) {
+              if (strOffset + s < this.bytes.length) {
+                const code = this.bytes[strOffset + s];
+                if (code === 0xA5) textStr += '∞';
+                else if (code === 0xBE) textStr += '-';
+                else if (code === 0xB1) textStr += '±';
+                else if (code === 0xA3) textStr += '≤';
+                else if (code === 0xB3) textStr += '≥';
+                else if (code === 0xB9) textStr += '≠';
+                else if (code >= 32 && code <= 126) textStr += String.fromCharCode(code);
+              }
+            }
+            if (textStr) {
+              const fontSize = Math.max(13, Math.min(height, 22));
+              svgElements.push(
+                `<text x="${x}" y="${y + fontSize * 0.8}" fill="${currentTextColor}" font-size="${fontSize}" font-family="Cambria Math, Times New Roman, serif" font-style="italic">${this.escapeXml(textStr)}</text>`
+              );
+            }
             break;
           }
 

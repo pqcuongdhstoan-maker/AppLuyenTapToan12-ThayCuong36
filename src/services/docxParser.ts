@@ -494,8 +494,11 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
       for (let v = 0; v < vImgs.length; v++) {
         const imgId = getAttr(vImgs[v], 'id') || getAttr(vImgs[v], 'href');
         if (imgId && imageMap[imgId]) {
-          pBlocks.push({ type: 'image', url: imageMap[imgId], alt: 'Hình minh họa' });
-          pText += ` ![Hình minh họa](${imageMap[imgId]}) `;
+          const url = imageMap[imgId];
+          const isSvg = url.startsWith('data:image/svg+xml');
+          const altText = isSvg ? 'Công thức MathType' : 'Hình minh họa';
+          pBlocks.push({ type: 'image', url, alt: altText });
+          pText += ` ![${altText}](${url}) `;
         }
       }
       return { text: pText, blocks: pBlocks, hasLowConfidenceMath: pLowConfidence };
@@ -507,8 +510,11 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
       for (let b = 0; b < blipNodes.length; b++) {
         const embedId = getAttr(blipNodes[b], 'embed') || getAttr(blipNodes[b], 'id');
         if (embedId && imageMap[embedId]) {
-          pBlocks.push({ type: 'image', url: imageMap[embedId], alt: 'Hình minh họa' });
-          pText += ` ![Hình minh họa](${imageMap[embedId]}) `;
+          const url = imageMap[embedId];
+          const isSvg = url.startsWith('data:image/svg+xml');
+          const altText = isSvg ? 'Công thức MathType' : 'Hình minh họa';
+          pBlocks.push({ type: 'image', url, alt: altText });
+          pText += ` ![${altText}](${url}) `;
         }
       }
       return { text: pText, blocks: pBlocks, hasLowConfidenceMath: pLowConfidence };
