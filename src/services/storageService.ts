@@ -35,7 +35,8 @@ const KEYS = {
   EXAMS: 'tu_luyen_toan_12_exams',
   ATTEMPTS: 'tu_luyen_toan_12_attempts',
   SETTINGS: 'tu_luyen_toan_12_settings',
-  AUDIT_LOGS: 'tu_luyen_toan_12_audit_logs'
+  AUDIT_LOGS: 'tu_luyen_toan_12_audit_logs',
+  SELECTED_GRADE: 'toan_thpt_selected_grade'
 };
 
 class StorageService {
@@ -87,6 +88,44 @@ class StorageService {
     }
     if (!localStorage.getItem(KEYS.LESSONS)) {
       localStorage.setItem(KEYS.LESSONS, JSON.stringify(INITIAL_LESSONS));
+    } else {
+      try {
+        const storedLessons: Lesson[] = JSON.parse(localStorage.getItem(KEYS.LESSONS) || '[]');
+        const storedMap = new Map(storedLessons.map(l => [l.id, l]));
+        let needsUpdate = false;
+
+        const merged: Lesson[] = INITIAL_LESSONS.map(initL => {
+          const existing = storedMap.get(initL.id);
+          if (!existing) {
+            needsUpdate = true;
+            return initL;
+          }
+          if (!existing.coreKnowledge && initL.coreKnowledge) {
+            needsUpdate = true;
+            return {
+              ...existing,
+              grade: existing.grade || initL.grade,
+              coreKnowledge: initL.coreKnowledge
+            };
+          }
+          if (!existing.grade) {
+            needsUpdate = true;
+            return {
+              ...existing,
+              grade: initL.grade
+            };
+          }
+          return existing;
+        });
+
+        // Also preserve any custom lessons created by teachers
+        const customLessons = storedLessons.filter(l => !INITIAL_LESSONS.some(il => il.id === l.id));
+        const finalLessons = [...merged, ...customLessons];
+
+        if (needsUpdate || storedLessons.length < INITIAL_LESSONS.length) {
+          localStorage.setItem(KEYS.LESSONS, JSON.stringify(finalLessons));
+        }
+      } catch {}
     }
     if (!localStorage.getItem(KEYS.EXAMS)) {
       localStorage.setItem(KEYS.EXAMS, JSON.stringify(INITIAL_EXAMS));
@@ -651,14 +690,35 @@ class StorageService {
     }
   }
 
-  // --- Lessons & Chapters ---
-  getLessons(): Lesson[] {
+  // --- Grade Selection ---
+  getSelectedGrade(): 10 | 11 | 12 {
     this.init();
     try {
-      const raw = localStorage.getItem(KEYS.LESSONS);
-      if (raw) return JSON.parse(raw);
+      const stored = localStorage.getItem(KEYS.SELECTED_GRADE);
+      if (stored === '10' || stored === '11' || stored === '12') {
+        return parseInt(stored, 10) as 10 | 11 | 12;
+      }
     } catch {}
-    return INITIAL_LESSONS;
+    return 12; // Default to Grade 12
+  }
+
+  setSelectedGrade(grade: 10 | 11 | 12): void {
+    localStorage.setItem(KEYS.SELECTED_GRADE, grade.toString());
+  }
+
+  // --- Lessons & Chapters ---
+  getLessons(grade?: number): Lesson[] {
+    this.init();
+    let allLessons: Lesson[] = INITIAL_LESSONS;
+    try {
+      const raw = localStorage.getItem(KEYS.LESSONS);
+      if (raw) allLessons = JSON.parse(raw);
+    } catch {}
+
+    if (grade !== undefined) {
+      return allLessons.filter(l => (l.grade || 12) === grade);
+    }
+    return allLessons;
   }
 
   saveLessons(lessons: Lesson[]): void {
@@ -669,12 +729,29 @@ class StorageService {
     return this.getLessons().find(l => l.id === id);
   }
 
-  getChapters(): Chapter[] {
-    const lessons = this.getLessons().filter(l => !l.isHidden);
-    return CHAPTERS_DATA.map(ch => ({
-      ...ch,
-      lessons: lessons.filter(l => l.chapterNumber === ch.number)
-    }));
+  getChapters(grade?: number): Chapter[] {
+    const allLessons = this.getLessons().filter(l => !l.isHidden);
+    const targetGrade = grade || this.getSelectedGrade();
+    
+    return CHAPTERS_DATA
+      .filter(ch => (ch.grade || 12) === targetGrade)
+      .map(ch => ({
+        ...ch,
+        lessons: allLessons.filter(l => l.chapterNumber === ch.number && (l.grade || 12) === targetGrade)
+      }));
+  }
+
+  saveLessonKnowledge(lessonId: string, knowledge: import('../types').CoreKnowledge): void {
+    const allLessons = this.getLessons();
+    const idx = allLessons.findIndex(l => l.id === lessonId);
+    if (idx >= 0) {
+      allLessons[idx] = {
+        ...allLessons[idx],
+        coreKnowledge: knowledge
+      };
+      this.saveLessons(allLessons);
+      this.logAudit('KNOWLEDGE_UPDATED', `Đã cập nhật Kiến thức trọng tâm cho bài học: ${allLessons[idx].title}`);
+    }
   }
 
   // --- Exams & Versions ---

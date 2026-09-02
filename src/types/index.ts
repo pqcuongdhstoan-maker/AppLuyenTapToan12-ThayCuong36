@@ -183,20 +183,46 @@ export interface Exam {
   updatedAt: string;
 }
 
+export interface KeyFormulaItem {
+  name: string;
+  latex: string;
+  note?: string;
+}
+
+export interface ProblemMethodItem {
+  problemType: string;
+  steps: string[];
+  example?: string;
+  solution?: string;
+}
+
+export interface CoreKnowledge {
+  summary: string;
+  keyFormulas?: KeyFormulaItem[];
+  methods?: ProblemMethodItem[];
+  commonMistakes?: string[];
+  rawMarkdown?: string;
+  lastUpdated?: string;
+  updatedBy?: string;
+}
+
 export interface Lesson {
   id: string;
+  grade: 10 | 11 | 12;
   number: number;
   title: string;
   chapterNumber: number;
   chapterTitle: string;
   semester: 1 | 2;
   description?: string;
+  coreKnowledge?: CoreKnowledge;
   isHidden?: boolean;
   isCustom?: boolean; // Teacher-created supplementary topic
   examId?: string;
 }
 
 export interface Chapter {
+  grade: 10 | 11 | 12;
   number: number;
   title: string;
   semester: 1 | 2;

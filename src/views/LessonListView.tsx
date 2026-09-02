@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+﻿import React, { useState, useMemo, useEffect } from 'react';
 import {
   Search,
   Filter,
@@ -14,13 +14,15 @@ import {
   BookOpen,
   Upload,
   Sparkles,
-  Layers
+  Layers,
+  GraduationCap
 } from 'lucide-react';
-import { Lesson, User, UserRole, Attempt, AttemptStatus, QuestionType, Exam } from '../types';
+import { Lesson, User, UserRole, Attempt, AttemptStatus, QuestionType, Exam, CoreKnowledge } from '../types';
 import { storageService } from '../services/storageService';
 import { DocxParsedExam } from '../services/docxParser';
 import { LessonExamUploadModal } from '../components/exam/LessonExamUploadModal';
 import { WordPreviewModal } from './teacher/WordPreviewModal';
+import { LessonKnowledgeModal } from '../components/knowledge/LessonKnowledgeModal';
 
 interface LessonListViewProps {
   currentUser: User;
@@ -31,9 +33,13 @@ export const LessonListView: React.FC<LessonListViewProps> = ({
   currentUser,
   onStartExam
 }) => {
+  const [selectedGrade, setSelectedGrade] = useState<10 | 11 | 12>(storageService.getSelectedGrade());
   const [semesterFilter, setSemesterFilter] = useState<'all' | 1 | 2>('all');
   const [selectedChapter, setSelectedChapter] = useState<number | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Knowledge Modal State
+  const [knowledgeModalLesson, setKnowledgeModalLesson] = useState<Lesson | null>(null);
 
   // Upload & Preview Modals state
   const [uploadModalLesson, setUploadModalLesson] = useState<Lesson | null>(null);
@@ -51,12 +57,28 @@ export const LessonListView: React.FC<LessonListViewProps> = ({
   );
 
   const [exams, setExams] = useState<Exam[]>(storageService.getExams());
-  const lessons = storageService.getLessons().filter(l => !l.isHidden);
-  const chapters = storageService.getChapters();
+  
+  // Lessons and Chapters based on selectedGrade
+  const allGradeLessons = useMemo(() => {
+    return storageService.getLessons(selectedGrade).filter(l => !l.isHidden);
+  }, [selectedGrade]);
+
+  const chapters = useMemo(() => {
+    return storageService.getChapters(selectedGrade);
+  }, [selectedGrade]);
+
   const studentAttempts = storageService.getAttemptsByStudent(currentUser.id);
 
   const refreshExams = () => {
     setExams(storageService.getExams());
+  };
+
+  const handleGradeChange = (grade: 10 | 11 | 12) => {
+    setSelectedGrade(grade);
+    storageService.setSelectedGrade(grade);
+    setSelectedChapter('all');
+    setSemesterFilter('all');
+    setSearchQuery('');
   };
 
   // Group attempts by lesson
@@ -70,7 +92,7 @@ export const LessonListView: React.FC<LessonListViewProps> = ({
       progressPercentage: number;
     }>();
 
-    lessons.forEach((lesson) => {
+    allGradeLessons.forEach((lesson) => {
       const attempts = studentAttempts.filter(a => a.lessonId === lesson.id);
       const inProgress = attempts.find(a => a.status === AttemptStatus.IN_PROGRESS);
       const completed = attempts.filter(a => a.status === AttemptStatus.COMPLETED);
@@ -102,11 +124,11 @@ export const LessonListView: React.FC<LessonListViewProps> = ({
     });
 
     return map;
-  }, [lessons, studentAttempts]);
+  }, [allGradeLessons, studentAttempts]);
 
   // Filter lessons
   const filteredLessons = useMemo(() => {
-    return lessons.filter((lesson) => {
+    return allGradeLessons.filter((lesson) => {
       if (semesterFilter !== 'all' && lesson.semester !== semesterFilter) {
         return false;
       }
@@ -122,10 +144,82 @@ export const LessonListView: React.FC<LessonListViewProps> = ({
       }
       return true;
     });
-  }, [lessons, semesterFilter, selectedChapter, searchQuery]);
+  }, [allGradeLessons, semesterFilter, selectedChapter, searchQuery]);
+
+  const sem1Count = allGradeLessons.filter(l => l.semester === 1).length;
+  const sem2Count = allGradeLessons.filter(l => l.semester === 2).length;
 
   return (
     <div className="space-y-6">
+      
+      {/* GRADE SELECTOR BANNER */}
+      <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-purple-800 rounded-3xl p-5 sm:p-6 text-white shadow-xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="absolute bottom-0 left-1/3 -mb-10 w-36 h-36 bg-yellow-400/10 rounded-full blur-xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-yellow-400 text-slate-900 uppercase tracking-wide">
+                Chương trình GDPT 2018
+              </span>
+              <span className="text-xs text-blue-200 font-medium">Toán THPT (Kết nối tri thức & Bộ GD&ĐT)</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight flex items-center gap-2">
+              <span>Hệ Thống Tự Luyện & Kiến Thức Toán THPT</span>
+            </h1>
+            <p className="text-xs sm:text-sm text-blue-100 mt-1 max-w-xl">
+              Chọn khối lớp bên phải để xem toàn bộ danh mục bài học, tra cứu <strong>Kiến thức trọng tâm</strong> và luyện tập đề thi 4 phần chuẩn cấu trúc.
+            </p>
+          </div>
+
+          {/* Grade Switcher Tabs */}
+          <div className="flex items-center gap-2 bg-black/30 p-1.5 rounded-2xl backdrop-blur-md border border-white/20 self-stretch sm:self-auto justify-center">
+            <button
+              onClick={() => handleGradeChange(10)}
+              className={`px-4 py-2.5 rounded-xl font-black text-xs sm:text-sm transition-all flex items-center gap-2 ${
+                selectedGrade === 10
+                  ? 'bg-white text-blue-900 shadow-lg scale-105'
+                  : 'text-white/80 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              <span>Khối 10</span>
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                selectedGrade === 10 ? 'bg-blue-100 text-blue-800' : 'bg-white/20 text-white'
+              }`}>27 bài</span>
+            </button>
+
+            <button
+              onClick={() => handleGradeChange(11)}
+              className={`px-4 py-2.5 rounded-xl font-black text-xs sm:text-sm transition-all flex items-center gap-2 ${
+                selectedGrade === 11
+                  ? 'bg-white text-indigo-900 shadow-lg scale-105'
+                  : 'text-white/80 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              <span>Khối 11</span>
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                selectedGrade === 11 ? 'bg-indigo-100 text-indigo-800' : 'bg-white/20 text-white'
+              }`}>31 bài</span>
+            </button>
+
+            <button
+              onClick={() => handleGradeChange(12)}
+              className={`px-4 py-2.5 rounded-xl font-black text-xs sm:text-sm transition-all flex items-center gap-2 ${
+                selectedGrade === 12
+                  ? 'bg-white text-purple-900 shadow-lg scale-105'
+                  : 'text-white/80 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              <span>Khối 12</span>
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                selectedGrade === 12 ? 'bg-purple-100 text-purple-800' : 'bg-white/20 text-white'
+              }`}>19 bài</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Filters & Search Bar */}
       <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
         {/* Semester Tabs */}
@@ -138,7 +232,7 @@ export const LessonListView: React.FC<LessonListViewProps> = ({
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            Tất cả (19 bài)
+            Tất cả Khối {selectedGrade} ({allGradeLessons.length} bài)
           </button>
           <button
             onClick={() => setSemesterFilter(1)}
@@ -148,7 +242,7 @@ export const LessonListView: React.FC<LessonListViewProps> = ({
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            HỌC KÌ I (Bài 1 - 10)
+            HỌC KÌ I ({sem1Count} bài)
           </button>
           <button
             onClick={() => setSemesterFilter(2)}
@@ -158,7 +252,7 @@ export const LessonListView: React.FC<LessonListViewProps> = ({
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            HỌC KÌ II (Bài 11 - 19)
+            HỌC KÌ II ({sem2Count} bài)
           </button>
         </div>
 
@@ -169,12 +263,12 @@ export const LessonListView: React.FC<LessonListViewProps> = ({
             <select
               value={selectedChapter}
               onChange={(e) => setSelectedChapter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-              className="pl-9 pr-8 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 w-full sm:w-48"
+              className="pl-9 pr-8 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 w-full sm:w-56"
             >
-              <option value="all">Tất cả các chương</option>
+              <option value="all">Tất cả {chapters.length} chương (Khối {selectedGrade})</option>
               {chapters.map((ch) => (
                 <option key={ch.number} value={ch.number}>
-                  Chương {ch.number}: {ch.title.substring(0, 30)}...
+                  Chương {ch.number}: {ch.title.substring(0, 28)}...
                 </option>
               ))}
             </select>
@@ -325,6 +419,20 @@ export const LessonListView: React.FC<LessonListViewProps> = ({
 
               {/* Action Buttons */}
               <div className="p-3.5 bg-slate-50/70 border-t border-slate-100 flex items-center gap-2">
+                {/* 1. View Core Knowledge Button */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setKnowledgeModalLesson(lesson);
+                  }}
+                  title="Xem tóm tắt lý thuyết, công thức cốt lõi và phương pháp giải"
+                  className="py-2 px-3 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 hover:text-purple-800 border border-purple-200 font-bold text-xs shadow-2xs transition-all flex items-center justify-center gap-1.5 shrink-0"
+                >
+                  <BookOpen className="w-3.5 h-3.5 text-purple-600" />
+                  <span>Kiến thức</span>
+                </button>
+
+                {/* 2. Practice Exam Button */}
                 {stats.status === AttemptStatus.IN_PROGRESS ? (
                   <button
                     onClick={() => onStartExam(lesson, stats.inProgressAttempt?.id)}
@@ -351,7 +459,7 @@ export const LessonListView: React.FC<LessonListViewProps> = ({
                   </button>
                 )}
 
-                {/* Upload & Update Exam Button directly on card - ONLY FOR TEACHER & ADMIN */}
+                {/* 3. Upload & Update Exam Button directly on card - ONLY FOR TEACHER & ADMIN */}
                 {isTeacherOrAdmin && (
                   <button
                     onClick={(e) => {
@@ -377,6 +485,25 @@ export const LessonListView: React.FC<LessonListViewProps> = ({
           <h4 className="text-base font-bold text-slate-800">Không tìm thấy bài học phù hợp</h4>
           <p className="text-xs text-slate-500 mt-1">Vui lòng thử đổi từ khóa tìm kiếm hoặc lọc theo chương khác.</p>
         </div>
+      )}
+
+      {/* MODAL 0: Lesson Knowledge Modal */}
+      {knowledgeModalLesson && (
+        <LessonKnowledgeModal
+          isOpen={!!knowledgeModalLesson}
+          lesson={knowledgeModalLesson}
+          onClose={() => setKnowledgeModalLesson(null)}
+          currentUser={currentUser}
+          onSave={(lessonId, knowledge) => {
+            storageService.saveLessonKnowledge(lessonId, knowledge);
+            setNotificationMsg(`✅ Đã cập nhật kiến thức trọng tâm cho Bài ${knowledgeModalLesson.number}: ${knowledgeModalLesson.title}!`);
+            setTimeout(() => setNotificationMsg(null), 5000);
+          }}
+          onStartExam={(lesson) => {
+            setKnowledgeModalLesson(null);
+            onStartExam(lesson);
+          }}
+        />
       )}
 
       {/* MODAL 1: Lesson Exam Upload (Word .docx, JSON, AI) */}

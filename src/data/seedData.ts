@@ -114,229 +114,24 @@ export const INITIAL_SYSTEM_SETTINGS: SystemSettings = {
   uploadFileLimitMB: 10
 };
 
-export const INITIAL_LESSONS: Lesson[] = [
-  // CHƯƠNG 1
-  {
-    id: 'lesson_1',
-    number: 1,
-    title: 'Tính đơn điệu và cực trị của hàm số',
-    chapterNumber: 1,
-    chapterTitle: 'ỨNG DỤNG ĐẠO HÀM ĐỂ KHẢO SÁT VÀ VẼ ĐỒ THỊ HÀM SỐ',
-    semester: 1,
-    examId: 'exam_lesson_1'
-  },
-  {
-    id: 'lesson_2',
-    number: 2,
-    title: 'Giá trị lớn nhất và giá trị nhỏ nhất của hàm số',
-    chapterNumber: 1,
-    chapterTitle: 'ỨNG DỤNG ĐẠO HÀM ĐỂ KHẢO SÁT VÀ VẼ ĐỒ THỊ HÀM SỐ',
-    semester: 1,
-    examId: 'exam_lesson_2'
-  },
-  {
-    id: 'lesson_3',
-    number: 3,
-    title: 'Đường tiệm cận của đồ thị hàm số',
-    chapterNumber: 1,
-    chapterTitle: 'ỨNG DỤNG ĐẠO HÀM ĐỂ KHẢO SÁT VÀ VẼ ĐỒ THỊ HÀM SỐ',
-    semester: 1,
-    examId: 'exam_lesson_3'
-  },
-  {
-    id: 'lesson_4',
-    number: 4,
-    title: 'Khảo sát sự biến thiên và vẽ đồ thị của hàm số',
-    chapterNumber: 1,
-    chapterTitle: 'ỨNG DỤNG ĐẠO HÀM ĐỂ KHẢO SÁT VÀ VẼ ĐỒ THỊ HÀM SỐ',
-    semester: 1,
-    examId: 'exam_lesson_4'
-  },
-  {
-    id: 'lesson_5',
-    number: 5,
-    title: 'Ứng dụng đạo hàm để giải quyết một số vấn đề liên quan đến thực tiễn',
-    chapterNumber: 1,
-    chapterTitle: 'ỨNG DỤNG ĐẠO HÀM ĐỂ KHẢO SÁT VÀ VẼ ĐỒ THỊ HÀM SỐ',
-    semester: 1,
-    examId: 'exam_lesson_5'
-  },
+import {
+  ALL_LESSONS_DATA,
+  ALL_CHAPTERS_DATA,
+  GRADE_10_LESSONS,
+  GRADE_11_LESSONS,
+  GRADE_12_LESSONS
+} from './gradesData';
 
-  // CHƯƠNG 2
-  {
-    id: 'lesson_6',
-    number: 6,
-    title: 'Vectơ trong không gian',
-    chapterNumber: 2,
-    chapterTitle: 'VECTƠ VÀ HỆ TRỤC TỌA ĐỘ TRONG KHÔNG GIAN',
-    semester: 1,
-    examId: 'exam_lesson_6'
-  },
-  {
-    id: 'lesson_7',
-    number: 7,
-    title: 'Hệ trục tọa độ trong không gian',
-    chapterNumber: 2,
-    chapterTitle: 'VECTƠ VÀ HỆ TRỤC TỌA ĐỘ TRONG KHÔNG GIAN',
-    semester: 1,
-    examId: 'exam_lesson_7'
-  },
-  {
-    id: 'lesson_8',
-    number: 8,
-    title: 'Biểu thức tọa độ của các phép toán vectơ',
-    chapterNumber: 2,
-    chapterTitle: 'VECTƠ VÀ HỆ TRỤC TỌA ĐỘ TRONG KHÔNG GIAN',
-    semester: 1,
-    examId: 'exam_lesson_8'
-  },
+export {
+  ALL_LESSONS_DATA,
+  ALL_CHAPTERS_DATA,
+  GRADE_10_LESSONS,
+  GRADE_11_LESSONS,
+  GRADE_12_LESSONS
+};
 
-  // CHƯƠNG 3
-  {
-    id: 'lesson_9',
-    number: 9,
-    title: 'Khoảng biến thiên và khoảng tứ phân vị',
-    chapterNumber: 3,
-    chapterTitle: 'CÁC SỐ ĐẶC TRƯNG ĐO MỨC ĐỘ PHÂN TÁN CỦA MẪU SỐ LIỆU GHÉP NHÓM',
-    semester: 1,
-    examId: 'exam_lesson_9'
-  },
-  {
-    id: 'lesson_10',
-    number: 10,
-    title: 'Phương sai và độ lệch chuẩn',
-    chapterNumber: 3,
-    chapterTitle: 'CÁC SỐ ĐẶC TRƯNG ĐO MỨC ĐỘ PHÂN TÁN CỦA MẪU SỐ LIỆU GHÉP NHÓM',
-    semester: 1,
-    examId: 'exam_lesson_10'
-  },
-
-  // CHƯƠNG 4
-  {
-    id: 'lesson_11',
-    number: 11,
-    title: 'Nguyên hàm',
-    chapterNumber: 4,
-    chapterTitle: 'NGUYÊN HÀM VÀ TÍCH PHÂN',
-    semester: 2,
-    examId: 'exam_lesson_11'
-  },
-  {
-    id: 'lesson_12',
-    number: 12,
-    title: 'Tích phân',
-    chapterNumber: 4,
-    chapterTitle: 'NGUYÊN HÀM VÀ TÍCH PHÂN',
-    semester: 2,
-    examId: 'exam_lesson_12'
-  },
-  {
-    id: 'lesson_13',
-    number: 13,
-    title: 'Ứng dụng hình học của tích phân',
-    chapterNumber: 4,
-    chapterTitle: 'NGUYÊN HÀM VÀ TÍCH PHÂN',
-    semester: 2,
-    examId: 'exam_lesson_13'
-  },
-
-  // CHƯƠNG 5
-  {
-    id: 'lesson_14',
-    number: 14,
-    title: 'Phương trình mặt phẳng',
-    chapterNumber: 5,
-    chapterTitle: 'PHƯƠNG PHÁP TỌA ĐỘ TRONG KHÔNG GIAN',
-    semester: 2,
-    examId: 'exam_lesson_14'
-  },
-  {
-    id: 'lesson_15',
-    number: 15,
-    title: 'Phương trình đường thẳng trong không gian',
-    chapterNumber: 5,
-    chapterTitle: 'PHƯƠNG PHÁP TỌA ĐỘ TRONG KHÔNG GIAN',
-    semester: 2,
-    examId: 'exam_lesson_15'
-  },
-  {
-    id: 'lesson_16',
-    number: 16,
-    title: 'Công thức tính góc trong không gian',
-    chapterNumber: 5,
-    chapterTitle: 'PHƯƠNG PHÁP TỌA ĐỘ TRONG KHÔNG GIAN',
-    semester: 2,
-    examId: 'exam_lesson_16'
-  },
-  {
-    id: 'lesson_17',
-    number: 17,
-    title: 'Phương trình mặt cầu',
-    chapterNumber: 5,
-    chapterTitle: 'PHƯƠNG PHÁP TỌA ĐỘ TRONG KHÔNG GIAN',
-    semester: 2,
-    examId: 'exam_lesson_17'
-  },
-
-  // CHƯƠNG 6
-  {
-    id: 'lesson_18',
-    number: 18,
-    title: 'Xác suất có điều kiện',
-    chapterNumber: 6,
-    chapterTitle: 'XÁC SUẤT CÓ ĐIỀU KIỆN',
-    semester: 2,
-    examId: 'exam_lesson_18'
-  },
-  {
-    id: 'lesson_19',
-    number: 19,
-    title: 'Công thức xác suất toàn phần và công thức Bayes',
-    chapterNumber: 6,
-    chapterTitle: 'XÁC SUẤT CÓ ĐIỀU KIỆN',
-    semester: 2,
-    examId: 'exam_lesson_19'
-  }
-];
-
-export const CHAPTERS_DATA: Chapter[] = [
-  {
-    number: 1,
-    title: 'ỨNG DỤNG ĐẠO HÀM ĐỂ KHẢO SÁT VÀ VẼ ĐỒ THỊ HÀM SỐ',
-    semester: 1,
-    lessons: INITIAL_LESSONS.filter(l => l.chapterNumber === 1)
-  },
-  {
-    number: 2,
-    title: 'VECTƠ VÀ HỆ TRỤC TỌA ĐỘ TRONG KHÔNG GIAN',
-    semester: 1,
-    lessons: INITIAL_LESSONS.filter(l => l.chapterNumber === 2)
-  },
-  {
-    number: 3,
-    title: 'CÁC SỐ ĐẶC TRƯNG ĐO MỨC ĐỘ PHÂN TÁN CỦA MẪU SỐ LIỆU GHÉP NHÓM',
-    semester: 1,
-    lessons: INITIAL_LESSONS.filter(l => l.chapterNumber === 3)
-  },
-  {
-    number: 4,
-    title: 'NGUYÊN HÀM VÀ TÍCH PHÂN',
-    semester: 2,
-    lessons: INITIAL_LESSONS.filter(l => l.chapterNumber === 4)
-  },
-  {
-    number: 5,
-    title: 'PHƯƠNG PHÁP TỌA ĐỘ TRONG KHÔNG GIAN',
-    semester: 2,
-    lessons: INITIAL_LESSONS.filter(l => l.chapterNumber === 5)
-  },
-  {
-    number: 6,
-    title: 'XÁC SUẤT CÓ ĐIỀU KIỆN',
-    semester: 2,
-    lessons: INITIAL_LESSONS.filter(l => l.chapterNumber === 6)
-  }
-];
+export const INITIAL_LESSONS: Lesson[] = ALL_LESSONS_DATA;
+export const CHAPTERS_DATA: Chapter[] = ALL_CHAPTERS_DATA;
 
 // Rich Demo Questions for Lesson 1 (Calculus / Monotonicity & Extrema)
 // Exactly meeting Section XLVII requirement: 10 MCQ, 2 True/False, 3 Short Answer, 1 Essay.
