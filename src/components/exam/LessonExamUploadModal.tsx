@@ -28,6 +28,7 @@ import { storageService } from '../../services/storageService';
 import { parseDocxFile, DocxParsedExam } from '../../services/docxParser';
 import { downloadSampleWordTemplate } from '../../services/docxExporter';
 import { geminiService } from '../../services/geminiService';
+import { safeParseAiJson, normalizeAiExamData } from '../../services/aiJsonParser';
 import { RichMathTextInput } from '../math/RichMathTextInput';
 
 interface LessonExamUploadModalProps {
@@ -305,9 +306,14 @@ export const LessonExamUploadModal: React.FC<LessonExamUploadModalProps> = ({
     setIsGeneratingAi(true);
     setAiError(null);
 
-    const systemInstruction = `Bạn là Chuyên gia Khảo thí môn Toán 12 theo Chương trình GDPT 2018 bộ sách Kết nối tri thức với cuộc sống.
+    const gradeNum = lesson.grade || 12;
+    const systemInstruction = `Bạn là Chuyên gia Khảo thí môn Toán THPT (Khối ${gradeNum}) theo Chương trình GDPT 2018 bộ sách Kết nối tri thức với cuộc sống.
 MỌI CÔNG THỨC TOÁN BẮT BUỘC ĐƯỢC ĐỊNH DẠNG CHUẨN LATEX kẹp giữa dấu $...$ (nội dòng) hoặc $$...$$ (khối).
-Hãy trả về DUY NHẤT một chuỗi JSON hợp lệ (không thêm bất kỳ văn bản giải thích nào ngoài khối JSON), theo đúng cấu trúc:
+QUY TẮC BẮT BUỘC KHI XUẤT JSON:
+- Trả về DUY NHẤT một chuỗi JSON hợp lệ theo đúng schema bên dưới (không kèm lời chào, không kèm giải thích ngoài JSON).
+- Trong các chuỗi ký tự JSON, tất cả các ký tự gạch chéo ngược của LaTeX PHẦI được escape hợp lệ chuẩn JSON (ví dụ: "\\\\sin x", "\\\\frac{a}{b}", "\\\\alpha", "\\\\pi", "\\\\sqrt{x}", "\\\\vec{u}", "\\\\le", "\\\\ge").
+
+Cấu trúc JSON yêu cầu:
 {
   "title": "Luyện tập: ${lesson.title}",
   "questions": [
@@ -335,7 +341,7 @@ Hãy trả về DUY NHẤT một chuỗi JSON hợp lệ (không thêm bất k�
       "type": "TRUE_FALSE",
       "difficulty": "THONG_HIEU",
       "points": 1.0,
-      "content": "Cho hàm số $...$",
+      "content": "Cho mệnh đề hoặc hàm số $...$",
       "trueFalseItems": [
         {"id": "a", "content": "Mệnh đề a $...$", "correctAnswer": true, "explanation": "Giải thích $...$"},
         {"id": "b", "content": "Mệnh đề b $...$", "correctAnswer": false, "explanation": "Giải thích $...$"},
@@ -365,13 +371,13 @@ Hãy trả về DUY NHẤT một chuỗi JSON hợp lệ (không thêm bất k�
       "difficulty": "VAN_DUNG",
       "points": 1.5,
       "content": "Nội dung bài toán tự luận thực tế...",
-      "essayGuide": "Barem điểm...",
+      "essayGuide": "Barem điểm chi tiết...",
       "solution": "Lời giải chi tiết..."
     }
   ]
 }`;
 
-    const prompt = `Hãy tạo một bộ đề thi hoàn chỉnh cho bài học: "${lesson.title}" (thuộc chương "${lesson.chapterTitle}").
+    const prompt = `Hãy tạo một bộ đề thi hoàn chỉnh chuẩn GDPT 2018 cho bài học: "${lesson.title}" (Toán Khối ${gradeNum}, thuộc chương "${lesson.chapterTitle}").
 Mức độ đề: ${aiDifficulty}.
 Yêu cầu số lượng câu:
 - Phần I (MULTIPLE_CHOICE): ${aiMcqCount} câu trắc nghiệm 4 lựa chọn A, B, C, D (0.25đ/câu).
@@ -380,33 +386,19 @@ Yêu cầu số lượng câu:
 - Phần IV (ESSAY): ${aiEssayCount} câu tự luận toán thực tế hoặc vận dụng kèm barem điểm (1.5đ/câu).`;
 
     try {
-      const response = await geminiService.generateContent(prompt, systemInstruction);
+      const response = await geminiService.generateContent(prompt, systemInstruction, undefined, { isJson: true });
 
       if (!response.success || !response.text) {
         throw new Error(response.error || 'Mô hình AI không phản hồi');
       }
 
-      // Parse JSON from text
-      let cleanedJson = response.text.trim();
-      if (cleanedJson.startsWith('```json')) {
-        cleanedJson = cleanedJson.replace(/^```json/, '').replace(/```$/, '').trim();
-      } else if (cleanedJson.startsWith('```')) {
-        cleanedJson = cleanedJson.replace(/^```/, '').replace(/```$/, '').trim();
-      }
+      // Safe parse AI JSON with LaTeX backslash repair
+      const examData = safeParseAiJson<any>(response.text);
+      const parsed: DocxParsedExam = normalizeAiExamData(examData, lesson.title);
 
-      const jsonMatch = cleanedJson.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('Không thể tìm thấy định dạng JSON hợp lệ trong phản hồi AI');
+      if (!parsed.questions || parsed.questions.length === 0) {
+        throw new Error('AI không tạo được danh sách câu hỏi hợp lệ.');
       }
-
-      const examData = JSON.parse(jsonMatch[0]);
-      const parsed: DocxParsedExam = {
-        title: examData.title || `Luyện tập: ${lesson.title}`,
-        questions: examData.questions || [],
-        rawText: jsonMatch[0],
-        warnings: [],
-        hasUnconfidentFormulas: false
-      };
 
       setIsGeneratingAi(false);
       onPreviewParsed(parsed, lesson);

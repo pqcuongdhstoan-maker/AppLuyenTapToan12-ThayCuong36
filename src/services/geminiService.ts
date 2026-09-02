@@ -111,7 +111,8 @@ export const geminiService = {
   async generateContent(
     prompt: string,
     systemInstruction?: string,
-    onRetryNotice?: (fromModel: string, toModel: string, error: string) => void
+    onRetryNotice?: (fromModel: string, toModel: string, error: string) => void,
+    options?: { isJson?: boolean; temperature?: number }
   ): Promise<GeminiResponse> {
     const apiKey = this.getApiKey();
     if (!apiKey) {
@@ -137,11 +138,17 @@ export const geminiService = {
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
 
+        const generationConfig: any = {
+          temperature: options?.temperature ?? 0.7
+        };
+
+        if (options?.isJson) {
+          generationConfig.responseMimeType = 'application/json';
+        }
+
         const payload: any = {
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.7
-          }
+          generationConfig
         };
 
         if (systemInstruction) {

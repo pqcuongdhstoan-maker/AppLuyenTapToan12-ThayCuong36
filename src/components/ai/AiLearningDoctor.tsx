@@ -13,6 +13,7 @@ import {
 import { Attempt, Question } from '../../types';
 import { MathRenderer } from '../math/MathRenderer';
 import { geminiService } from '../../services/geminiService';
+import { safeParseAiJson } from '../../services/aiJsonParser';
 
 interface AiLearningDoctorProps {
   attempt: Attempt;
@@ -102,11 +103,15 @@ Hãy trả về duy nhất một mảng JSON 2 phần tử theo cấu trúc:
 ]`;
 
     try {
-      const res = await geminiService.generateContent(`Hãy tạo 2 câu trắc nghiệm rèn luyện bù đắp cho chủ đề "${attempt.lessonTitle}".`, systemInstruction);
+      const res = await geminiService.generateContent(
+        `Hãy tạo 2 câu trắc nghiệm rèn luyện bù đắp cho chủ đề "${attempt.lessonTitle}".`,
+        systemInstruction,
+        undefined,
+        { isJson: true }
+      );
       if (res.success && res.text) {
-        const jsonMatch = res.text.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
+        const parsed = safeParseAiJson<Question[]>(res.text);
+        if (Array.isArray(parsed) && parsed.length > 0) {
           setRemedialQuestions(parsed);
           return;
         }
