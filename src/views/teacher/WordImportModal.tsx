@@ -7,7 +7,8 @@ import {
   Sparkles,
   Info,
   X,
-  Layers
+  Layers,
+  RotateCcw
 } from 'lucide-react';
 import { parseDocxFile, DocxParsedExam } from '../../services/docxParser';
 import { Lesson, Exam } from '../../types';
@@ -26,6 +27,8 @@ export const WordImportModal: React.FC<WordImportModalProps> = ({
 }) => {
   const [selectedLessonId, setSelectedLessonId] = useState<string>('lesson_1');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [progressPercent, setProgressPercent] = useState<number>(0);
+  const [progressStepText, setProgressStepText] = useState<string>('');
   const [dragActive, setDragActive] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -40,13 +43,30 @@ export const WordImportModal: React.FC<WordImportModalProps> = ({
       return;
     }
 
+    if (file.size > 50 * 1024 * 1024) {
+      setErrorMsg('Dung lượng tệp vượt quá giới hạn cho phép (50MB).');
+      return;
+    }
+
     setIsProcessing(true);
+    setProgressPercent(5);
+    setProgressStepText('Đang tải tệp tin...');
     setErrorMsg(null);
 
     try {
-      const parsed = await parseDocxFile(file);
+      const parsed = await parseDocxFile(file, (percent, stepText) => {
+        setProgressPercent(percent);
+        setProgressStepText(stepText);
+      });
+
       const targetLesson = lessons.find((l) => l.id === selectedLessonId) || lessons[0];
       setIsProcessing(false);
+
+      if (!parsed.questions || parsed.questions.length === 0) {
+        setErrorMsg('Không tìm thấy câu hỏi hợp lệ trong tệp Word. Hãy đảm bảo đề thi bắt đầu bằng "Câu 1.", "Câu 2." hoặc có các tiêu đề PHẦN I, II, III, IV.');
+        return;
+      }
+
       onPreviewParsed(parsed, targetLesson);
     } catch (e: any) {
       console.error('Parse Word error:', e);
@@ -63,6 +83,16 @@ export const WordImportModal: React.FC<WordImportModalProps> = ({
     }
   };
 
+  const handleRetry = () => {
+    setErrorMsg(null);
+    setIsProcessing(false);
+    setProgressPercent(0);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
       <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-100 animate-in zoom-in-95 relative">
@@ -74,7 +104,7 @@ export const WordImportModal: React.FC<WordImportModalProps> = ({
         </button>
 
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center">
+          <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center shadow-xs">
             <Upload className="w-6 h-6" />
           </div>
           <div>
@@ -82,7 +112,7 @@ export const WordImportModal: React.FC<WordImportModalProps> = ({
               NHẬP ĐỀ THI TỪ MICROSOFT WORD (.DOCX)
             </h3>
             <p className="text-xs text-slate-500">
-              Bộ chuyển đổi OMML Math & Hình ảnh sang chuẩn LaTeX
+              Bộ chuyển đổi OMML Math &amp; Hình ảnh sang chuẩn LaTeX
             </p>
           </div>
         </div>
@@ -110,7 +140,7 @@ export const WordImportModal: React.FC<WordImportModalProps> = ({
           onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
           onDragLeave={() => setDragActive(false)}
           onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => !isProcessing && fileInputRef.current?.click()}
           className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
             dragActive
               ? 'border-indigo-600 bg-indigo-50/50'
@@ -130,14 +160,22 @@ export const WordImportModal: React.FC<WordImportModalProps> = ({
           />
 
           {isProcessing ? (
-            <div className="py-4 space-y-2">
+            <div className="py-4 space-y-3">
               <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
-              <div className="text-xs font-bold text-slate-800">Đang giải nén và phân tích cấu trúc Word (OMML)...</div>
-              <div className="text-[11px] text-slate-400">Trích xuất công thức LaTeX và hình ảnh minh họa</div>
+              <div className="text-xs font-bold text-slate-800">{progressStepText || 'Đang giải nén và phân tích cấu trúc Word...'}</div>
+
+              {/* Progress Bar */}
+              <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden max-w-xs mx-auto">
+                <div
+                  className="bg-indigo-600 h-full transition-all duration-300 rounded-full"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <div className="text-[11px] text-slate-500 font-bold">{progressPercent}%</div>
             </div>
           ) : (
             <div className="space-y-2">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto shadow-inner">
                 <FileText className="w-6 h-6" />
               </div>
               <div className="text-sm font-bold text-slate-800">
@@ -150,11 +188,21 @@ export const WordImportModal: React.FC<WordImportModalProps> = ({
           )}
         </div>
 
-        {/* Error Notice */}
+        {/* Error Notice with Retry Button */}
         {errorMsg && (
-          <div className="mt-4 p-3 bg-red-50 rounded-xl border border-red-200 text-xs text-red-700 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
-            <span>{errorMsg}</span>
+          <div className="mt-4 p-3 bg-red-50 rounded-xl border border-red-200 text-xs text-red-700 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
+              <span>{errorMsg}</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleRetry}
+              className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-[11px] flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Thử lại</span>
+            </button>
           </div>
         )}
 

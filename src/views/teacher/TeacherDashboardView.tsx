@@ -47,6 +47,7 @@ import { exportExamToDocx, downloadSampleWordTemplate } from '../../services/doc
 import { exportToMoodleXml, exportToMoodleAiken } from '../../services/moodleExporter';
 import { exportLessonToPptx } from '../../services/pptxExporter';
 import { CompetencyRadarChart } from '../../components/analytics/CompetencyRadarChart';
+import { RichMathTextInput } from '../../components/math/RichMathTextInput';
 import { FileDown, Presentation, Code2, Download } from 'lucide-react';
 
 interface TeacherDashboardViewProps {
@@ -692,15 +693,13 @@ export const TeacherDashboardView: React.FC<TeacherDashboardViewProps> = ({ curr
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Nhận xét của Giáo viên:
-                    </label>
-                    <textarea
+                    <RichMathTextInput
+                      label="Nhận xét của Giáo viên (hỗ trợ công thức Toán)"
                       rows={3}
                       value={essayFeedback}
-                      onChange={(e) => setEssayFeedback(e.target.value)}
-                      placeholder="Góp ý các bước giải cho học sinh..."
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                      onChange={setEssayFeedback}
+                      placeholder="Góp ý các bước giải hoặc chèn công thức hướng dẫn cho học sinh..."
+                      showPreview={true}
                     />
                   </div>
 

@@ -56,27 +56,48 @@ export interface User {
   updatedAt?: string;
 }
 
+export interface StructuredMathFormula {
+  id?: string;
+  kind?: 'math' | 'inlineMath' | 'displayMath';
+  latex: string;
+  mathml?: string;
+  sourceOmml?: string;
+  displayMode: boolean; // false = inline ($...$), true = display ($$...$$)
+  needsReview?: boolean;
+  conversionWarning?: string | null;
+}
+
 export interface ContentBlock {
-  type: 'text' | 'math' | 'image' | 'math-image' | 'warning';
-  value?: string;           // Plain text
-  latex?: string;           // LaTeX math string (e.g. f(x), \mathbb{R})
+  type: 'text' | 'paragraph' | 'math' | 'inlineMath' | 'displayMath' | 'image' | 'math-image' | 'table' | 'lineBreak' | 'warning';
+  kind?: 'paragraph' | 'inlineMath' | 'displayMath' | 'math' | 'image' | 'table' | 'lineBreak' | 'warning';
+  value?: string;           // Plain text / paragraph content
+  content?: string;         // Alias for value
+  latex?: string;           // LaTeX math string
+  mathml?: string;          // MathML markup
+  sourceOmml?: string;      // Original OMML XML
+  displayMode?: boolean;    // true = block/display, false = inline
   url?: string;             // Image URL / Data URL (PNG, SVG, JPG)
   alt?: string;             // Image label / caption
   sourceType?: 'mathtype-ole' | 'omml' | 'wmf' | 'emf' | 'raster';
   display?: 'inline' | 'block';
   width?: number;
   height?: number;
+  rows?: string[][];        // Table rows if table block
+  latexTable?: string;      // LaTeX table/array representation
   warningMessage?: string;  // Warning description when an object could not be converted cleanly
+  needsReview?: boolean;
 }
 
 export interface QuestionOption {
   id: string; // 'A' | 'B' | 'C' | 'D'
+  label?: string; // Alias for id: 'A' | 'B' | 'C' | 'D'
   content: string;
   contentBlocks?: ContentBlock[];
 }
 
 export interface TrueFalseItem {
   id: string; // 'a' | 'b' | 'c' | 'd'
+  label?: string; // Alias for id
   content: string;
   correctAnswer?: boolean; // true = Đúng, false = Sai, undefined = Chưa xác định
   explanation?: string;
@@ -88,6 +109,7 @@ export interface ShortAnswerConfig {
   tolerance?: number; // Allowed error margin (e.g. 0.01)
   decimals?: number; // Rounding requirement
   unit?: string;
+  expressionEquivalence?: boolean; // Whether to test algebraic equivalence
 }
 
 export interface Question {
@@ -100,18 +122,25 @@ export interface Question {
   difficulty: DifficultyLevel;
   content: string; // May contain LaTeX math: $...$ or $$...$$
   contentBlocks?: ContentBlock[]; // Rich content blocks in original sequential order
-  options?: QuestionOption[]; // For Part I
+  options?: QuestionOption[]; // For Part I (Multiple Choice)
   correctOption?: string | string[] | null; // 'A' or null if unassigned
-  trueFalseItems?: TrueFalseItem[]; // For Part II
+  trueFalseItems?: TrueFalseItem[]; // For Part II (True/False)
+  statements?: TrueFalseItem[]; // Alias for trueFalseItems
   shortAnswerConfig?: ShortAnswerConfig; // For Part III
+  correctAnswers?: string[]; // Direct list of correct answers for all parts
   essayGuide?: string; // For Part IV: Suggested rubric/solution for teacher
   solution?: string; // Detailed solution explanation
   solutionBlocks?: ContentBlock[];
+  images?: string[]; // Array of image URLs embedded in this question
+  formulas?: StructuredMathFormula[]; // All mathematical formulas in this question
   points: number; // Max points for this question (default 0.25 for Part I, 1.0 for Part II, 0.5 for Part III, 1-2 for Part IV)
   imageUrl?: string;
   fallbackMode?: 'content' | 'word-image'; // Azota-like fallback mode
   fallbackImageUrl?: string; // Image snapshot of the entire question in Word appearance
+  confidence?: number; // 0 to 1 confidence of rule-based parser
+  warnings?: string[]; // Warning messages specific to this question
   needsTeacherCheck?: boolean; // Flagged when formula extraction had low confidence or warnings
+  needsReview?: boolean; // Standard review flag
   topic?: string;
 }
 

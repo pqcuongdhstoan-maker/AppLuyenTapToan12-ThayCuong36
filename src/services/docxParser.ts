@@ -1,7 +1,17 @@
 import JSZip from 'jszip';
-import { Question, QuestionType, DifficultyLevel, QuestionOption, TrueFalseItem, ContentBlock } from '../types';
+import {
+  Question,
+  QuestionType,
+  DifficultyLevel,
+  QuestionOption,
+  TrueFalseItem,
+  ContentBlock,
+  StructuredMathFormula,
+  ShortAnswerConfig
+} from '../types';
 import { decodeMtefToLatex } from './mtefDecoder';
 import { convertWmfToSvgDataUrl } from './wmfDecoder';
+import { validateMathSyntax } from './mathSyntaxValidator';
 
 export interface DocxValidationIssue {
   questionIndex: number;
@@ -33,140 +43,248 @@ export interface DocxParseResult {
 export type DocxParsedExam = DocxParseResult;
 
 /**
- * Converts Microsoft Word OMML (Office Math Markup Language) XML Node to LaTeX string
+ * Converts Microsoft Word OMML (Office Math Markup Language) XML Node to LaTeX and MathML strings
  */
-export function convertOmmlToLatex(ommlNode: Element): { latex: string; confident: boolean } {
+export function convertOmmlToLatexAndMathMl(ommlNode: Element): {
+  latex: string;
+  mathml: string;
+  confident: boolean;
+  sourceOmml: string;
+} {
+  const serializer = typeof XMLSerializer !== 'undefined' ? new XMLSerializer() : null;
+  const sourceOmml = serializer ? serializer.serializeToString(ommlNode) : ommlNode.outerHTML || '';
+  let isConfident = true;
+
   try {
-    let isConfident = true;
-
     function parseNode(node: Element): string {
-      const tagName = node.localName || node.nodeName.replace(/^.*:/, '');
+      const tagName = (node.localName || node.nodeName.replace(/^.*:/, '')).toLowerCase();
 
-      // Fractions: <m:f> -> \dfrac{num}{den}
+      // 1. Fractions: <m:f> -> \dfrac{num}{den}
       if (tagName === 'f') {
         const numNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('num'));
         const denNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('den'));
-        const num = numNode ? Array.from(numNode.children).map(c => parseNode(c as Element)).join('') : '';
-        const den = denNode ? Array.from(denNode.children).map(c => parseNode(c as Element)).join('') : '';
+        const num = numNode ? Array.from(numNode.children).map(c => parseNode(c as Element)).join('').trim() : '';
+        const den = denNode ? Array.from(denNode.children).map(c => parseNode(c as Element)).join('').trim() : '';
         return `\\dfrac{${num || '1'}}{${den || '1'}}`;
       }
 
-      // Radicals (square root / nth root): <m:rad> -> \sqrt[deg]{e}
+      // 2. Radicals (square root / nth root): <m:rad> -> \sqrt[deg]{e}
       if (tagName === 'rad') {
         const degNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('deg'));
         const eNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('e'));
         const deg = degNode ? Array.from(degNode.children).map(c => parseNode(c as Element)).join('').trim() : '';
-        const e = eNode ? Array.from(eNode.children).map(c => parseNode(c as Element)).join('') : '';
+        const e = eNode ? Array.from(eNode.children).map(c => parseNode(c as Element)).join('').trim() : '';
         return deg ? `\\sqrt[${deg}]{${e}}` : `\\sqrt{${e}}`;
       }
 
-      // Superscript: <m:sSup> -> base^{sup}
-      if (tagName === 'sSup') {
+      // 3. Superscript: <m:sSup> -> base^{sup}
+      if (tagName === 'ssup') {
         const eNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('e'));
         const supNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('sup'));
         const base = eNode ? Array.from(eNode.children).map(c => parseNode(c as Element)).join('') : '';
-        const sup = supNode ? Array.from(supNode.children).map(c => parseNode(c as Element)).join('') : '';
+        const sup = supNode ? Array.from(supNode.children).map(c => parseNode(c as Element)).join('').trim() : '';
         return `${base}^{${sup}}`;
       }
 
-      // Subscript: <m:sSub> -> base_{sub}
-      if (tagName === 'sSub') {
+      // 4. Subscript: <m:sSub> -> base_{sub}
+      if (tagName === 'ssub') {
         const eNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('e'));
         const subNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('sub'));
         const base = eNode ? Array.from(eNode.children).map(c => parseNode(c as Element)).join('') : '';
-        const sub = subNode ? Array.from(subNode.children).map(c => parseNode(c as Element)).join('') : '';
+        const sub = subNode ? Array.from(subNode.children).map(c => parseNode(c as Element)).join('').trim() : '';
         return `${base}_{${sub}}`;
       }
 
-      // Sub-Superscript: <m:sSubSup> -> base_{sub}^{sup}
-      if (tagName === 'sSubSup') {
+      // 5. Sub-Superscript: <m:sSubSup> -> base_{sub}^{sup}
+      if (tagName === 'ssubsup') {
         const eNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('e'));
         const subNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('sub'));
         const supNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('sup'));
         const base = eNode ? Array.from(eNode.children).map(c => parseNode(c as Element)).join('') : '';
-        const sub = subNode ? Array.from(subNode.children).map(c => parseNode(c as Element)).join('') : '';
-        const sup = supNode ? Array.from(supNode.children).map(c => parseNode(c as Element)).join('') : '';
+        const sub = subNode ? Array.from(subNode.children).map(c => parseNode(c as Element)).join('').trim() : '';
+        const sup = supNode ? Array.from(supNode.children).map(c => parseNode(c as Element)).join('').trim() : '';
         return `${base}_{${sub}}^{${sup}}`;
       }
 
-      // Integrals / Large Operators / n-ary: <m:nary> -> \int_{sub}^{sup} {e}
+      // 6. Pre-sub/superscript: <m:sPre>
+      if (tagName === 'spre') {
+        const eNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('e'));
+        const subNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('sub'));
+        const supNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('sup'));
+        const base = eNode ? Array.from(eNode.children).map(c => parseNode(c as Element)).join('') : '';
+        const sub = subNode ? Array.from(subNode.children).map(c => parseNode(c as Element)).join('').trim() : '';
+        const sup = supNode ? Array.from(supNode.children).map(c => parseNode(c as Element)).join('').trim() : '';
+        if (sub && sup) return `{}_{${sub}}^{${sup}}{${base}}`;
+        if (sub) return `{}_{${sub}}{${base}}`;
+        if (sup) return `{}^{${sup}}{${base}}`;
+        return base;
+      }
+
+      // 7. Integrals / Summations / Large Operators / n-ary: <m:nary>
       if (tagName === 'nary') {
-        const chr = node.getAttribute('m:chr') || '\\int';
+        let chr = node.getAttribute('m:chr') || '';
+        if (!chr) {
+          const pr = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('naryPr'));
+          if (pr) {
+            const chrEl = Array.from(pr.children).find(c => (c.localName || c.nodeName).endsWith('chr'));
+            if (chrEl) chr = chrEl.getAttribute('m:val') || chrEl.textContent || '';
+          }
+        }
+
         const subNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('sub'));
         const supNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('sup'));
         const eNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('e'));
         const sub = subNode ? Array.from(subNode.children).map(c => parseNode(c as Element)).join('').trim() : '';
         const sup = supNode ? Array.from(supNode.children).map(c => parseNode(c as Element)).join('').trim() : '';
-        const e = eNode ? Array.from(eNode.children).map(c => parseNode(c as Element)).join('') : '';
-        
+        const e = eNode ? Array.from(eNode.children).map(c => parseNode(c as Element)).join('').trim() : '';
+
         let op = '\\int';
-        if (chr === '∑' || chr === 'sum') op = '\\sum';
-        else if (chr === '∏' || chr === 'prod') op = '\\prod';
+        if (chr === '∑' || chr === 'sum' || chr === 'Σ') op = '\\sum';
+        else if (chr === '∏' || chr === 'prod' || chr === 'Π') op = '\\prod';
+        else if (chr === '∬') op = '\\iint';
+        else if (chr === '∭') op = '\\iiint';
+        else if (chr === '∮') op = '\\oint';
+        else if (chr === '⋃' || chr === 'bigcup') op = '\\bigcup';
+        else if (chr === '⋂' || chr === 'bigcap') op = '\\bigcap';
 
         if (sub && sup) return `${op}_{${sub}}^{${sup}}{${e}}`;
         if (sub) return `${op}_{${sub}}{${e}}`;
+        if (sup) return `${op}^{${sup}}{${e}}`;
         return `${op}{${e}}`;
       }
 
-      // Limits: <m:limLow> -> \lim_{lim} {e}
-      if (tagName === 'limLow') {
+      // 8. Limits & Extrema: <m:limLow>, <m:limUpp>
+      if (tagName === 'limlow' || tagName === 'limupp') {
         const eNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('e'));
         const limNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('lim'));
         const e = eNode ? Array.from(eNode.children).map(c => parseNode(c as Element)).join('') : '';
-        const lim = limNode ? Array.from(limNode.children).map(c => parseNode(c as Element)).join('') : '';
+        const lim = limNode ? Array.from(limNode.children).map(c => parseNode(c as Element)).join('').trim() : '';
+
+        const eTrimmed = e.trim().toLowerCase();
+        let cmd = '\\lim';
+        if (eTrimmed === 'max') cmd = '\\max';
+        else if (eTrimmed === 'min') cmd = '\\min';
+        else if (eTrimmed === 'sup') cmd = '\\sup';
+        else if (eTrimmed === 'inf') cmd = '\\inf';
+
+        if (cmd !== '\\lim') {
+          return `${cmd}_{${lim}}`;
+        }
         return `\\lim_{${lim}}{${e}}`;
       }
 
-      // Delimiters (Parentheses, Brackets, Cases): <m:d>
+      // 9. Delimiters (Parentheses, Brackets, Cases): <m:d>
       if (tagName === 'd') {
-        const eNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('e'));
-        const content = eNode ? Array.from(eNode.children).map(c => parseNode(c as Element)).join('') : '';
-        const begChr = node.getAttribute('m:begChr') || '(';
-        const endChr = node.getAttribute('m:endChr') || ')';
+        const eNodes = Array.from(node.children).filter(c => (c.localName || c.nodeName).endsWith('e'));
+        let begChr = node.getAttribute('m:begChr');
+        let endChr = node.getAttribute('m:endChr');
+        let sepChr = node.getAttribute('m:sepChr');
 
-        if (begChr === '{' && (!endChr || endChr === '')) {
-          return `\\begin{cases} ${content} \\end{cases}`;
+        const pr = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('dPr'));
+        if (pr) {
+          const bEl = Array.from(pr.children).find(c => (c.localName || c.nodeName).endsWith('begChr'));
+          if (bEl && begChr === null) begChr = bEl.getAttribute('m:val');
+          const endEl = Array.from(pr.children).find(c => (c.localName || c.nodeName).endsWith('endChr'));
+          if (endEl && endChr === null) endChr = endEl.getAttribute('m:val');
+          const sEl = Array.from(pr.children).find(c => (c.localName || c.nodeName).endsWith('sepChr'));
+          if (sEl && sepChr === null) sepChr = sEl.getAttribute('m:val');
         }
-        return `\\left${begChr} ${content} \\right${endChr}`;
+
+        if (begChr === null) begChr = '(';
+        if (endChr === null) endChr = ')';
+
+        const contents = eNodes.map(e => Array.from(e.children).map(ch => parseNode(ch as Element)).join(''));
+
+        // Case: System of equations / Piecewise function (begChr='{', endChr is empty or '')
+        if (begChr === '{' && (!endChr || endChr.trim() === '')) {
+          const casesBody = contents.map(c => c.trim()).filter(Boolean).join(' \\\\ ');
+          return `\\begin{cases} ${casesBody} \\end{cases}`;
+        }
+
+        // Interval with semicolon or comma separator
+        if (contents.length > 1) {
+          const separator = sepChr || '; ';
+          const joined = contents.join(separator);
+          return `\\left${begChr || '('} ${joined} \\right${endChr || ')'}`;
+        }
+
+        const singleContent = contents[0] || '';
+        if (begChr === '(' && endChr === ')') {
+          return `\\left( ${singleContent} \\right)`;
+        }
+        if (begChr === '[' && endChr === ']') {
+          return `\\left[ ${singleContent} \\right]`;
+        }
+        if (begChr === '{' && endChr === '}') {
+          return `\\left\\{ ${singleContent} \\right\\}`;
+        }
+        if (begChr === '|' && endChr === '|') {
+          return `\\left| ${singleContent} \\right|`;
+        }
+        if (begChr === '‖' || begChr === '∥') {
+          return `\\left\\| ${singleContent} \\right\\|`;
+        }
+
+        return `\\left${begChr || '.'} ${singleContent} \\right${endChr || '.'}`;
       }
 
-      // Accent / Vector: <m:acc> -> \vec{e} or \bar{e}
+      // 10. Accent / Vector: <m:acc> -> \vec{e} or \overrightarrow{e}
       if (tagName === 'acc') {
-        const chr = node.getAttribute('m:chr') || '→';
+        let chr = node.getAttribute('m:chr');
+        const pr = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('accPr'));
+        if (pr) {
+          const chrEl = Array.from(pr.children).find(c => (c.localName || c.nodeName).endsWith('chr'));
+          if (chrEl && chr === null) chr = chrEl.getAttribute('m:val');
+        }
+        if (!chr) chr = '→';
+
         const eNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('e'));
-        const e = eNode ? Array.from(eNode.children).map(c => parseNode(c as Element)).join('') : '';
-        if (chr === '→' || chr === '⃗') return `\\vec{${e}}`;
-        if (chr === '¯' || chr === '—') return `\\overline{${e}}`;
+        const e = eNode ? Array.from(eNode.children).map(c => parseNode(c as Element)).join('').trim() : '';
+
+        if (chr === '→' || chr === '⃗') {
+          return e.length > 1 ? `\\overrightarrow{${e}}` : `\\vec{${e}}`;
+        }
+        if (chr === '¯' || chr === '—' || chr === '‾') return `\\overline{${e}}`;
         if (chr === '^' || chr === '̂') return `\\widehat{${e}}`;
+        if (chr === '~' || chr === '˜') return `\\tilde{${e}}`;
+        if (chr === '.' || chr === '˙') return `\\dot{${e}}`;
+        if (chr === '..' || chr === '¨') return `\\ddot{${e}}`;
         return `\\vec{${e}}`;
       }
 
-      // Matrix: <m:m>
+      // 11. Matrix & Array: <m:m>
       if (tagName === 'm') {
         const rows = Array.from(node.children).filter(c => (c.localName || c.nodeName).endsWith('mr'));
         const rowLatex = rows.map(r => {
           const cells = Array.from(r.children).filter(c => (c.localName || c.nodeName).endsWith('e'));
-          return cells.map(c => Array.from(c.children).map(ch => parseNode(ch as Element)).join('')).join(' & ');
+          return cells.map(c => Array.from(c.children).map(ch => parseNode(ch as Element)).join('').trim()).join(' & ');
         }).join(' \\\\ ');
-        return `\\begin{matrix} ${rowLatex} \\end{matrix}`;
+        return `\\begin{pmatrix} ${rowLatex} \\end{pmatrix}`;
       }
 
-      // Functions: <m:func> -> \fname{e} (sin, cos, tan, cot, ln, log, etc.)
+      // 12. Equation Array / Aligned: <m:eqArr>
+      if (tagName === 'eqarr') {
+        const rows = Array.from(node.children).filter(c => (c.localName || c.nodeName).endsWith('e'));
+        const body = rows.map(r => Array.from(r.children).map(ch => parseNode(ch as Element)).join('').trim()).join(' \\\\ ');
+        return `\\begin{aligned} ${body} \\end{aligned}`;
+      }
+
+      // 13. Functions: <m:func> -> \fname{e}
       if (tagName === 'func') {
         const fNameNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('fName'));
         const eNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('e'));
         const fName = fNameNode ? Array.from(fNameNode.children).map(c => parseNode(c as Element)).join('').trim() : '';
         const e = eNode ? Array.from(eNode.children).map(c => parseNode(c as Element)).join('') : '';
-        
+
         const lowerFName = fName.toLowerCase();
-        if (['sin', 'cos', 'tan', 'cot', 'ln', 'log', 'exp', 'arcsin', 'arccos', 'arctan', 'min', 'max', 'det'].includes(lowerFName)) {
+        if (['sin', 'cos', 'tan', 'cot', 'ln', 'log', 'exp', 'arcsin', 'arccos', 'arctan', 'min', 'max', 'det', 'dim', 'ker', 'deg'].includes(lowerFName)) {
           return `\\${lowerFName}{${e}}`;
         }
         return `${fName}(${e})`;
       }
 
-      // Group character / Overbrace / Underbrace: <m:groupChr>
-      if (tagName === 'groupChr') {
+      // 14. Group character / Overbrace / Underbrace: <m:groupChr>
+      if (tagName === 'groupchr') {
         const eNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('e'));
         const chr = node.getAttribute('m:chr') || '';
         const pos = node.getAttribute('m:pos') || 'top';
@@ -176,17 +294,16 @@ export function convertOmmlToLatex(ommlNode: Element): { latex: string; confiden
         return e;
       }
 
-      // Box / BorderBox: <m:box>, <m:borderBox>
-      if (tagName === 'box' || tagName === 'borderBox') {
+      // 15. Box & BorderBox: <m:box>, <m:borderBox>
+      if (tagName === 'box' || tagName === 'borderbox') {
         const eNode = Array.from(node.children).find(c => (c.localName || c.nodeName).endsWith('e'));
-        const e = eNode ? Array.from(eNode.children).map(c => parseNode(c as Element)).join('') : '';
-        return e;
+        return eNode ? Array.from(eNode.children).map(c => parseNode(c as Element)).join('') : '';
       }
 
-      // Text node <m:t> or <w:t>
+      // 16. Text node <m:t> or <w:t>
       if (tagName === 't') {
         let txt = node.textContent || '';
-        // Replace common math unicode symbols with LaTeX
+        // Replace unicode mathematical symbols with LaTeX equivalents
         txt = txt
           .replace(/ℝ/g, '\\mathbb{R} ')
           .replace(/ℤ/g, '\\mathbb{Z} ')
@@ -195,6 +312,7 @@ export function convertOmmlToLatex(ommlNode: Element): { latex: string; confiden
           .replace(/ℂ/g, '\\mathbb{C} ')
           .replace(/∞/g, '\\infty ')
           .replace(/±/g, '\\pm ')
+          .replace(/∓/g, '\\mp ')
           .replace(/≤/g, '\\le ')
           .replace(/≥/g, '\\ge ')
           .replace(/≠/g, '\\neq ')
@@ -202,9 +320,12 @@ export function convertOmmlToLatex(ommlNode: Element): { latex: string; confiden
           .replace(/∉/g, '\\notin ')
           .replace(/⊂/g, '\\subset ')
           .replace(/⊃/g, '\\supset ')
+          .replace(/⊆/g, '\\subseteq ')
+          .replace(/⊇/g, '\\supseteq ')
           .replace(/∪/g, '\\cup ')
           .replace(/∩/g, '\\cap ')
           .replace(/∅/g, '\\emptyset ')
+          .replace(/∖/g, '\\setminus ')
           .replace(/Δ|∆/g, '\\Delta ')
           .replace(/π/g, '\\pi ')
           .replace(/α/g, '\\alpha ')
@@ -214,6 +335,10 @@ export function convertOmmlToLatex(ommlNode: Element): { latex: string; confiden
           .replace(/λ/g, '\\lambda ')
           .replace(/ω/g, '\\omega ')
           .replace(/φ/g, '\\varphi ')
+          .replace(/σ/g, '\\sigma ')
+          .replace(/τ/g, '\\tau ')
+          .replace(/μ/g, '\\mu ')
+          .replace(/ρ/g, '\\rho ')
           .replace(/→/g, '\\to ')
           .replace(/⇒/g, '\\Rightarrow ')
           .replace(/⇔/g, '\\Leftrightarrow ')
@@ -222,6 +347,8 @@ export function convertOmmlToLatex(ommlNode: Element): { latex: string; confiden
           .replace(/÷/g, '\\div ')
           .replace(/≈/g, '\\approx ')
           .replace(/≡/g, '\\equiv ')
+          .replace(/⊥/g, '\\perp ')
+          .replace(/∥/g, '\\parallel ')
           .replace(/∠/g, '\\angle ')
           .replace(/°/g, '^\\circ ')
           .replace(/′/g, '\'')
@@ -239,17 +366,38 @@ export function convertOmmlToLatex(ommlNode: Element): { latex: string; confiden
     }
 
     const latex = parseNode(ommlNode).trim();
-    return { latex, confident: isConfident && latex.length > 0 };
+    const mathml = `<math xmlns="http://www.w3.org/1998/Math/MathML"><mtext>${latex}</mtext></math>`;
+    const validation = validateMathSyntax(latex);
+    if (!validation.isValid) {
+      isConfident = false;
+    }
+
+    return {
+      latex,
+      mathml,
+      confident: isConfident && latex.length > 0,
+      sourceOmml
+    };
   } catch (err) {
-    console.warn('OMML convert warning:', err);
-    return { latex: ommlNode.textContent || '', confident: false };
+    console.warn('OMML conversion warning:', err);
+    return {
+      latex: ommlNode.textContent || '',
+      mathml: '',
+      confident: false,
+      sourceOmml
+    };
   }
+}
+
+export function convertOmmlToLatex(ommlNode: Element): { latex: string; confident: boolean } {
+  const res = convertOmmlToLatexAndMathMl(ommlNode);
+  return { latex: res.latex, confident: res.confident };
 }
 
 function findChildrenByTag(el: Element, tagName: string): Element[] {
   const result: Element[] = [];
   const target = tagName.toLowerCase();
-  
+
   function scan(node: Element) {
     const loc = (node.localName || node.nodeName.replace(/^.*:/, '')).toLowerCase();
     if (loc === target) {
@@ -276,7 +424,7 @@ function getAttr(el: Element, attrName: string): string | null {
   const target = attrName.toLowerCase();
   const direct = el.getAttribute(attrName);
   if (direct) return direct;
-  
+
   if (el.attributes) {
     for (let i = 0; i < el.attributes.length; i++) {
       const a = el.attributes[i];
@@ -292,7 +440,12 @@ function getAttr(el: Element, attrName: string): string | null {
 /**
  * Parses a Word .docx file ArrayBuffer or File into structured Questions with rich content blocks
  */
-export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxParseResult> {
+export async function parseDocxFile(
+  fileData: File | ArrayBuffer,
+  onProgress?: (percent: number, stepText: string) => void
+): Promise<DocxParseResult> {
+  onProgress?.(10, 'Đang giải nén tập tin Word DOCX...');
+
   let zip: JSZip;
   try {
     zip = await JSZip.loadAsync(fileData);
@@ -305,6 +458,7 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
     throw new Error('Cấu trúc file Word không hợp lệ (thiếu word/document.xml).');
   }
 
+  onProgress?.(25, 'Đang phân tích cây XML và liên kết hình ảnh...');
   const docXmlText = await docXmlFile.async('text');
   const parser = new DOMParser();
   const xmlDoc = parser.parseFromString(docXmlText, 'application/xml');
@@ -385,7 +539,7 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
       }
     }
 
-    // Also index all files in word/embeddings folder directly
+    // Direct embeddings index
     const embeddingsFolder = zip.folder('word/embeddings');
     if (embeddingsFolder) {
       const files = embeddingsFolder.file(/.*/);
@@ -407,6 +561,8 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
     console.warn('Could not extract relationships / OLE objects from docx:', e);
   }
 
+  onProgress?.(50, 'Đang trích xuất công thức OMML, MathType và cấu trúc văn bản...');
+
   const body = findChildrenByTag(xmlDoc.documentElement, 'body')[0] || xmlDoc.documentElement;
 
   interface ProcessedItem {
@@ -415,11 +571,15 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
     isBold?: boolean;
     isUnderlined?: boolean;
     hasLowConfidenceMath?: boolean;
+    formulas: StructuredMathFormula[];
+    images: string[];
   }
 
   function processRunOrElement(el: Element): ProcessedItem {
     let pText = '';
     const pBlocks: ContentBlock[] = [];
+    const pFormulas: StructuredMathFormula[] = [];
+    const pImages: string[] = [];
     let pLowConfidence = false;
     let isBold = false;
     let isUnderlined = false;
@@ -429,14 +589,38 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
     // 1. OMML Math (<m:oMath>, <m:oMathPara>)
     if (tag === 'omath' || tag === 'omathpara') {
       ommlCount++;
-      const { latex, confident } = convertOmmlToLatex(el);
+      const isDisplay = tag === 'omathpara';
+      const { latex, mathml, confident, sourceOmml } = convertOmmlToLatexAndMathMl(el);
+
       if (!confident) {
         pLowConfidence = true;
         hasUnconfidentFormulas = true;
       }
-      pText += ` $${latex}$ `;
-      pBlocks.push({ type: 'math', latex });
-      return { text: pText, blocks: pBlocks, hasLowConfidenceMath: pLowConfidence };
+
+      const mathFormula: StructuredMathFormula = {
+        id: `math_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        kind: isDisplay ? 'displayMath' : 'inlineMath',
+        latex,
+        mathml,
+        sourceOmml,
+        displayMode: isDisplay,
+        needsReview: !confident,
+        conversionWarning: !confident ? 'Công thức có cấu trúc đặc biệt cần kiểm tra' : null
+      };
+
+      pFormulas.push(mathFormula);
+      pText += isDisplay ? ` $$${latex}$$ ` : ` $${latex}$ `;
+      pBlocks.push({
+        type: isDisplay ? 'displayMath' : 'math',
+        kind: isDisplay ? 'displayMath' : 'inlineMath',
+        latex,
+        mathml,
+        sourceOmml,
+        displayMode: isDisplay,
+        needsReview: !confident
+      });
+
+      return { text: pText, blocks: pBlocks, formulas: pFormulas, images: pImages, hasLowConfidenceMath: pLowConfidence };
     }
 
     // 2. MathType OLE Object (<w:object>)
@@ -447,7 +631,7 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
       for (let o = 0; o < oleNodes.length; o++) {
         const rId = getAttr(oleNodes[o], 'id') || '';
         const shapeId = getAttr(oleNodes[o], 'ShapeID') || '';
-        
+
         let latex = oleMap[rId];
         if (!latex && rId) {
           const matchingKey = Object.keys(oleMap).find(k => k.includes(rId) || rId.includes(k));
@@ -459,28 +643,35 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
         }
 
         if (latex) {
+          const mathFormula: StructuredMathFormula = {
+            id: `mathtype_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            latex,
+            displayMode: false,
+            needsReview: false
+          };
+          pFormulas.push(mathFormula);
           pText += ` $${latex}$ `;
-          pBlocks.push({ type: 'math', latex });
+          pBlocks.push({ type: 'math', kind: 'inlineMath', latex, displayMode: false });
           foundMath = true;
         }
       }
 
       if (!foundMath) {
-        // Check if v:imagedata has MathType WMF in oleMap
         const vImgs = findChildrenByTag(el, 'imagedata');
         for (let v = 0; v < vImgs.length; v++) {
           const imgId = getAttr(vImgs[v], 'id') || getAttr(vImgs[v], 'href');
           if (imgId && oleMap[imgId]) {
             const latex = oleMap[imgId];
+            pFormulas.push({ id: `mathtype_${imgId}`, latex, displayMode: false });
             pText += ` $${latex}$ `;
-            pBlocks.push({ type: 'math', latex });
+            pBlocks.push({ type: 'math', kind: 'inlineMath', latex, displayMode: false });
             foundMath = true;
             break;
           }
         }
       }
 
-      return { text: pText, blocks: pBlocks, hasLowConfidenceMath: pLowConfidence };
+      return { text: pText, blocks: pBlocks, formulas: pFormulas, images: pImages, hasLowConfidenceMath: pLowConfidence };
     }
 
     // 3. VML Picture (<w:pict>)
@@ -491,16 +682,18 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
         if (imgId) {
           if (oleMap[imgId]) {
             const latex = oleMap[imgId];
+            pFormulas.push({ id: `mathtype_${imgId}`, latex, displayMode: false });
             pText += ` $${latex}$ `;
-            pBlocks.push({ type: 'math', latex });
+            pBlocks.push({ type: 'math', kind: 'inlineMath', latex, displayMode: false });
           } else if (imageMap[imgId]) {
             const url = imageMap[imgId];
-            pBlocks.push({ type: 'image', url });
+            pImages.push(url);
+            pBlocks.push({ type: 'image', kind: 'image', url });
             pText += ` ![](${url}) `;
           }
         }
       }
-      return { text: pText, blocks: pBlocks, hasLowConfidenceMath: pLowConfidence };
+      return { text: pText, blocks: pBlocks, formulas: pFormulas, images: pImages, hasLowConfidenceMath: pLowConfidence };
     }
 
     // 4. Drawing (<w:drawing>)
@@ -511,24 +704,26 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
         if (embedId) {
           if (oleMap[embedId]) {
             const latex = oleMap[embedId];
+            pFormulas.push({ id: `mathtype_${embedId}`, latex, displayMode: false });
             pText += ` $${latex}$ `;
-            pBlocks.push({ type: 'math', latex });
+            pBlocks.push({ type: 'math', kind: 'inlineMath', latex, displayMode: false });
           } else if (imageMap[embedId]) {
             const url = imageMap[embedId];
-            pBlocks.push({ type: 'image', url });
+            pImages.push(url);
+            pBlocks.push({ type: 'image', kind: 'image', url });
             pText += ` ![](${url}) `;
           }
         }
       }
-      return { text: pText, blocks: pBlocks, hasLowConfidenceMath: pLowConfidence };
+      return { text: pText, blocks: pBlocks, formulas: pFormulas, images: pImages, hasLowConfidenceMath: pLowConfidence };
     }
 
     // 5. Standard Text Node (<w:t>)
     if (tag === 't') {
       const txt = el.textContent || '';
       pText += txt;
-      if (txt) pBlocks.push({ type: 'text', value: txt });
-      return { text: pText, blocks: pBlocks, hasLowConfidenceMath: pLowConfidence };
+      if (txt) pBlocks.push({ type: 'text', kind: 'paragraph', value: txt });
+      return { text: pText, blocks: pBlocks, formulas: pFormulas, images: pImages, hasLowConfidenceMath: pLowConfidence };
     }
 
     // 6. Run (<w:r>)
@@ -538,6 +733,8 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
 
       let runText = '';
       const runBlocks: ContentBlock[] = [];
+      const runFormulas: StructuredMathFormula[] = [];
+      const runImages: string[] = [];
 
       for (let c = 0; c < el.childNodes.length; c++) {
         const child = el.childNodes[c] as Element;
@@ -545,6 +742,8 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
           const res = processRunOrElement(child);
           if (res.text) runText += res.text;
           runBlocks.push(...res.blocks);
+          runFormulas.push(...res.formulas);
+          runImages.push(...res.images);
           if (res.hasLowConfidenceMath) pLowConfidence = true;
         }
       }
@@ -554,7 +753,9 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
       }
       pText += runText;
       pBlocks.push(...runBlocks);
-      return { text: pText, blocks: pBlocks, isBold, isUnderlined, hasLowConfidenceMath: pLowConfidence };
+      pFormulas.push(...runFormulas);
+      pImages.push(...runImages);
+      return { text: pText, blocks: pBlocks, formulas: pFormulas, images: pImages, isBold, isUnderlined, hasLowConfidenceMath: pLowConfidence };
     }
 
     // 7. Other Container Elements
@@ -564,13 +765,15 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
         const res = processRunOrElement(child);
         if (res.text) pText += res.text;
         pBlocks.push(...res.blocks);
+        pFormulas.push(...res.formulas);
+        pImages.push(...res.images);
         if (res.hasLowConfidenceMath) pLowConfidence = true;
         if (res.isBold) isBold = true;
         if (res.isUnderlined) isUnderlined = true;
       }
     }
 
-    return { text: pText, blocks: pBlocks, isBold, isUnderlined, hasLowConfidenceMath: pLowConfidence };
+    return { text: pText, blocks: pBlocks, formulas: pFormulas, images: pImages, isBold, isUnderlined, hasLowConfidenceMath: pLowConfidence };
   }
 
   function processParagraph(p: Element): ProcessedItem {
@@ -579,27 +782,50 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
 
   function processTable(tbl: Element): ProcessedItem {
     const rows = findChildrenByTag(tbl, 'tr');
-    if (rows.length === 0) return { text: '', blocks: [] };
+    if (rows.length === 0) return { text: '', blocks: [], formulas: [], images: [] };
 
     const tableRows: string[] = [];
+    const parsedRows: string[][] = [];
     let maxCols = 0;
+    const formulas: StructuredMathFormula[] = [];
+    const images: string[] = [];
 
     for (const r of rows) {
       const cells = findChildrenByTag(r, 'tc');
       maxCols = Math.max(maxCols, cells.length);
+      const rowData: string[] = [];
+
       const cellTexts = cells.map(c => {
         const ps = findChildrenByTag(c, 'p');
-        const cellContent = ps.map(p => processParagraph(p).text).filter(Boolean).join(' ');
+        const cellItems = ps.map(p => {
+          const res = processParagraph(p);
+          formulas.push(...res.formulas);
+          images.push(...res.images);
+          return res.text;
+        }).filter(Boolean);
+        const cellContent = cellItems.join(' ');
+        rowData.push(cellContent || ' ');
         return cellContent || ' ';
       });
+
+      parsedRows.push(rowData);
       tableRows.push(cellTexts.join(' & ') + ' \\\\ \\hline');
     }
 
     const colAlign = '|' + Array(maxCols || 1).fill('c').join('|') + '|';
     const latexTable = `$$\n\\begin{array}{${colAlign}}\n\\hline\n${tableRows.join('\n')}\n\\end{array}\n$$`;
+
     return {
       text: latexTable,
-      blocks: [{ type: 'math', latex: `\\begin{array}{${colAlign}}\n\\hline\n${tableRows.join('\n')}\n\\end{array}` }]
+      blocks: [{
+        type: 'table',
+        kind: 'table',
+        rows: parsedRows,
+        latexTable,
+        displayMode: true
+      }],
+      formulas,
+      images
     };
   }
 
@@ -624,6 +850,8 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
       }
     }
   }
+
+  onProgress?.(75, 'Đang phân loại 4 dạng câu hỏi và bóc tách đáp án / lời giải...');
 
   const fullText = extractedLines.map(l => l.text).join('\n');
   const questions: Question[] = [];
@@ -671,11 +899,20 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
     }
 
     const allBlocks: ContentBlock[] = [];
-    currentQuestionLines.forEach(l => allBlocks.push(...l.blocks));
+    const allFormulas: StructuredMathFormula[] = [];
+    const allImages: string[] = [];
+
+    currentQuestionLines.forEach(l => {
+      allBlocks.push(...l.blocks);
+      allFormulas.push(...l.formulas);
+      allImages.push(...l.images);
+    });
 
     const q = processQuestionBlock(
       rawBlock,
       allBlocks,
+      allFormulas,
+      allImages,
       currentPart,
       qNum,
       currentNeedsCheck,
@@ -705,7 +942,7 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
       else if (numeral === 'III' || numeral === '3') currentPart = 3;
       else if (numeral === 'II' || numeral === '2') currentPart = 2;
       else currentPart = 1;
-      qNum = 1; // Restart numbering per section as required
+      qNum = 1;
       continue;
     }
 
@@ -716,7 +953,6 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
       saveCurrentDraft();
       hasStartedFirstQuestion = true;
     } else if (!hasStartedFirstQuestion) {
-      // Skip general instructions / cover page
       continue;
     }
 
@@ -730,9 +966,12 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
 
   saveCurrentDraft();
 
+  onProgress?.(95, 'Đang hoàn tất chuẩn hóa câu hỏi...');
+
   if (hasUnconfidentFormulas) {
     warnings.push('Một số công thức toán có ký hiệu đặc biệt cần giáo viên kiểm tra lại trong màn hình xem trước.');
   }
+
   const stats: DocxParseStats = {
     part1Count: questions.filter(q => q.part === 1).length,
     part2Count: questions.filter(q => q.part === 2).length,
@@ -743,6 +982,8 @@ export async function parseDocxFile(fileData: File | ArrayBuffer): Promise<DocxP
     imageCount,
     failedConversionsCount
   };
+
+  onProgress?.(100, 'Hoàn thành nạp đề thi!');
 
   return {
     title: 'Đề nhập từ file Word',
@@ -781,9 +1022,8 @@ function extractSequentialBlocksForPart1(
   }
 
   for (const block of rawBlocks) {
-    if (block.type === 'text') {
-      const val = block.value || '';
-      // Search for option markers: A., B., C., D.
+    if (block.type === 'text' || block.kind === 'paragraph') {
+      const val = block.value || block.content || '';
       const optRegex = /(?:^|[\s\t\.\,\;])(?:<u>)?([A-D])(?:<\/u>)?[\.\:\)]\s*/g;
       let lastIdx = 0;
       let match: RegExpExecArray | null;
@@ -794,9 +1034,9 @@ function extractSequentialBlocksForPart1(
           const cleanPre = preText.replace(/<\/?u>/g, '').trim();
           if (cleanPre) {
             if (currentKey && optionBlocksMap[currentKey]) {
-              optionBlocksMap[currentKey].push({ type: 'text', value: cleanPre });
+              optionBlocksMap[currentKey].push({ type: 'text', kind: 'paragraph', value: cleanPre });
             } else {
-              stemBlocks.push({ type: 'text', value: cleanPre });
+              stemBlocks.push({ type: 'text', kind: 'paragraph', value: cleanPre });
             }
           }
         }
@@ -810,14 +1050,13 @@ function extractSequentialBlocksForPart1(
         const cleanRem = remaining.replace(/<\/?u>/g, '').trim();
         if (cleanRem) {
           if (currentKey && optionBlocksMap[currentKey]) {
-            optionBlocksMap[currentKey].push({ type: 'text', value: cleanRem });
+            optionBlocksMap[currentKey].push({ type: 'text', kind: 'paragraph', value: cleanRem });
           } else {
-            stemBlocks.push({ type: 'text', value: cleanRem });
+            stemBlocks.push({ type: 'text', kind: 'paragraph', value: cleanRem });
           }
         }
       }
     } else {
-      // Math, math-image, image, etc.
       if (currentKey && optionBlocksMap[currentKey]) {
         optionBlocksMap[currentKey].push(block);
       } else {
@@ -829,17 +1068,17 @@ function extractSequentialBlocksForPart1(
   const options: QuestionOption[] = ['A', 'B', 'C', 'D'].map(letter => {
     const blks = optionBlocksMap[letter] || [];
     let textContent = blks.map(b => {
-      if (b.type === 'text') return b.value || '';
-      if (b.type === 'math') return `$${b.latex}$`;
-      if (b.type === 'math-image') return `![](${b.url})`;
-      if (b.type === 'image') return `![](${b.url})`;
+      if (b.type === 'text' || b.kind === 'paragraph') return b.value || b.content || '';
+      if (b.type === 'math' || b.kind === 'inlineMath' || b.kind === 'displayMath') return `$${b.latex}$`;
+      if (b.type === 'image' || b.kind === 'image') return `![](${b.url})`;
       return '';
     }).join(' ').trim();
 
     return {
       id: letter,
+      label: letter,
       content: textContent,
-      contentBlocks: blks.length > 0 ? blks : [{ type: 'text', value: textContent }]
+      contentBlocks: blks.length > 0 ? blks : [{ type: 'text', kind: 'paragraph', value: textContent }]
     };
   });
 
@@ -861,9 +1100,8 @@ function extractSequentialBlocksForPart2(
   let currentKey: string | null = null;
 
   for (const block of rawBlocks) {
-    if (block.type === 'text') {
-      const val = block.value || '';
-      // Search for sub-item markers: a), b), c), d) or a., b., c., d., (a), (b)
+    if (block.type === 'text' || block.kind === 'paragraph') {
+      const val = block.value || block.content || '';
       const tfRegex = /(?:^|[\s\t\.\,\;\n])(?:<u>)?(?:\(([a-d])\)|([a-d])(?:<\/u>)?[\.\:\)]|\(([a-d])\))(?:<\/u>)?\s*/gi;
       let lastIdx = 0;
       let match: RegExpExecArray | null;
@@ -874,9 +1112,9 @@ function extractSequentialBlocksForPart2(
           const cleanPre = preText.replace(/<\/?u>/g, '').trim();
           if (cleanPre) {
             if (currentKey && tfBlocksMap[currentKey]) {
-              tfBlocksMap[currentKey].push({ type: 'text', value: cleanPre });
+              tfBlocksMap[currentKey].push({ type: 'text', kind: 'paragraph', value: cleanPre });
             } else {
-              stemBlocks.push({ type: 'text', value: cleanPre });
+              stemBlocks.push({ type: 'text', kind: 'paragraph', value: cleanPre });
             }
           }
         }
@@ -891,9 +1129,9 @@ function extractSequentialBlocksForPart2(
         const cleanRem = remaining.replace(/<\/?u>/g, '').trim();
         if (cleanRem) {
           if (currentKey && tfBlocksMap[currentKey]) {
-            tfBlocksMap[currentKey].push({ type: 'text', value: cleanRem });
+            tfBlocksMap[currentKey].push({ type: 'text', kind: 'paragraph', value: cleanRem });
           } else {
-            stemBlocks.push({ type: 'text', value: cleanRem });
+            stemBlocks.push({ type: 'text', kind: 'paragraph', value: cleanRem });
           }
         }
       }
@@ -909,10 +1147,9 @@ function extractSequentialBlocksForPart2(
   const trueFalseItems: TrueFalseItem[] = ['a', 'b', 'c', 'd'].map(letter => {
     const blks = tfBlocksMap[letter] || [];
     let textContent = blks.map(b => {
-      if (b.type === 'text') return b.value || '';
-      if (b.type === 'math') return `$${b.latex}$`;
-      if (b.type === 'math-image') return `![](${b.url})`;
-      if (b.type === 'image') return `![](${b.url})`;
+      if (b.type === 'text' || b.kind === 'paragraph') return b.value || b.content || '';
+      if (b.type === 'math' || b.kind === 'inlineMath' || b.kind === 'displayMath') return `$${b.latex}$`;
+      if (b.type === 'image' || b.kind === 'image') return `![](${b.url})`;
       return '';
     }).join(' ').trim();
 
@@ -924,7 +1161,6 @@ function extractSequentialBlocksForPart2(
     if (isExplicitFalse) correctAnswer = false;
     else if (isExplicitTrue) correctAnswer = true;
 
-    // Clean [Đúng] / [Sai] tags from text content
     let cleanText = textContent
       .replace(/[\(\[]\s*(đúng|sai|dung|đ|s|d)\s*[\)\]]/gi, '')
       .replace(/[\:\.]\s*(đúng|sai|dung)\s*$/gi, '')
@@ -932,9 +1168,10 @@ function extractSequentialBlocksForPart2(
 
     return {
       id: letter,
+      label: letter,
       content: cleanText,
       correctAnswer,
-      contentBlocks: blks.length > 0 ? blks : [{ type: 'text', value: cleanText }]
+      contentBlocks: blks.length > 0 ? blks : [{ type: 'text', kind: 'paragraph', value: cleanText }]
     };
   });
 
@@ -953,11 +1190,10 @@ function extractSequentialBlocksForPart3(
   solution?: string;
   solutionBlocks?: ContentBlock[];
 } {
-  // Extract "Đáp án: X" or "Đáp số: X"
-  const ansMatch = blockText.match(/(?:đáp án|đáp số|kết quả|ans|da)[\:\s]*([\-0-9\,\.\/\+\s]+)/i);
+  const ansMatch = blockText.match(/(?:đáp án|đáp số|kết quả|ans|da)[\:\s]*([\-0-9\,\.\/\+\s\w\(\)\;\\\{\}\^\_]+)/i);
   let correctAnswers: string[] = [];
   if (ansMatch) {
-    const rawVal = ansMatch[1].trim().replace(/\s+/g, '');
+    const rawVal = ansMatch[1].trim();
     const altDot = rawVal.replace(/,/g, '.');
     const altComma = rawVal.replace(/\./g, ',');
     correctAnswers = Array.from(new Set([rawVal, altDot, altComma])).filter(Boolean);
@@ -969,14 +1205,14 @@ function extractSequentialBlocksForPart3(
   let isInSolution = false;
 
   for (const block of rawBlocks) {
-    if (block.type === 'text') {
-      const val = block.value || '';
+    if (block.type === 'text' || block.kind === 'paragraph') {
+      const val = block.value || block.content || '';
       const solIdx = val.search(/(lời giải|hướng dẫn giải|hd giải|solution)[\:\.]/i);
       if (solIdx !== -1) {
         const pre = val.substring(0, solIdx).trim();
-        if (pre) stemBlocks.push({ type: 'text', value: pre });
+        if (pre) stemBlocks.push({ type: 'text', kind: 'paragraph', value: pre });
         const post = val.substring(solIdx).trim();
-        if (post) solutionBlocks.push({ type: 'text', value: post });
+        if (post) solutionBlocks.push({ type: 'text', kind: 'paragraph', value: post });
         isInSolution = true;
         continue;
       }
@@ -995,7 +1231,7 @@ function extractSequentialBlocksForPart3(
 
   return {
     stemBlocks,
-    shortAnswerConfig: { correctAnswers, tolerance: 0.01 },
+    shortAnswerConfig: { correctAnswers, tolerance: 0.01, expressionEquivalence: true },
     solution,
     solutionBlocks: solutionBlocks.length > 0 ? solutionBlocks : undefined
   };
@@ -1018,14 +1254,14 @@ function extractSequentialBlocksForPart4(
   let isInSolution = false;
 
   for (const block of rawBlocks) {
-    if (block.type === 'text') {
-      const val = block.value || '';
+    if (block.type === 'text' || block.kind === 'paragraph') {
+      const val = block.value || block.content || '';
       const solIdx = val.search(/(lời giải|hướng dẫn giải|hướng dẫn chấm|rubric|solution)[\:\.]/i);
       if (solIdx !== -1) {
         const pre = val.substring(0, solIdx).trim();
-        if (pre) stemBlocks.push({ type: 'text', value: pre });
+        if (pre) stemBlocks.push({ type: 'text', kind: 'paragraph', value: pre });
         const post = val.substring(solIdx).trim();
-        if (post) solutionBlocks.push({ type: 'text', value: post });
+        if (post) solutionBlocks.push({ type: 'text', kind: 'paragraph', value: post });
         isInSolution = true;
         continue;
       }
@@ -1057,21 +1293,22 @@ function extractSequentialBlocksForPart4(
 function processQuestionBlock(
   block: string,
   rawBlocks: ContentBlock[],
+  formulas: StructuredMathFormula[],
+  images: string[],
   part: 1 | 2 | 3 | 4,
   questionNumber: number,
   needsTeacherCheck: boolean,
   validationIssues: DocxValidationIssue[]
 ): Question {
-  // Strip "Câu X." prefix from the first text block
   const cleanedRawBlocks = rawBlocks.map((b, idx) => {
-    if (idx === 0 && b.type === 'text') {
-      const firstVal = (b.value || '').replace(/^(?:\[|\()? *(?:câu|cau|bài|bai|question) *\d+ *[\.\:\-\]\)]\s*/i, '').trim();
-      return { ...b, value: firstVal };
+    if (idx === 0 && (b.type === 'text' || b.kind === 'paragraph')) {
+      const firstVal = (b.value || b.content || '').replace(/^(?:\[|\()? *(?:câu|cau|bài|bai|question) *\d+ *[\.\:\-\]\)]\s*/i, '').trim();
+      return { ...b, value: firstVal, content: firstVal };
     }
     return b;
   });
 
-  const firstImage = cleanedRawBlocks.find(b => b.type === 'image')?.url;
+  const firstImage = images[0] || cleanedRawBlocks.find(b => b.type === 'image' || b.kind === 'image')?.url;
 
   if (part === 1) {
     const res = extractSequentialBlocksForPart1(cleanedRawBlocks, block);
@@ -1085,6 +1322,8 @@ function processQuestionBlock(
       });
     }
 
+    const confidence = res.correctOption ? 0.95 : 0.65;
+
     return {
       id: `imported_q_${part}_${questionNumber}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
       part: 1,
@@ -1096,15 +1335,22 @@ function processQuestionBlock(
       contentBlocks: res.stemBlocks,
       options: res.options,
       correctOption: res.correctOption,
+      correctAnswers: res.correctOption ? [res.correctOption] : [],
+      formulas,
+      images,
       imageUrl: firstImage,
       fallbackMode: 'content',
-      needsTeacherCheck: needsTeacherCheck || res.correctOption === null
+      confidence,
+      needsTeacherCheck: needsTeacherCheck || res.correctOption === null,
+      needsReview: needsTeacherCheck || res.correctOption === null
     };
   }
 
   if (part === 2) {
     const res = extractSequentialBlocksForPart2(cleanedRawBlocks, block);
     const stemContent = res.stemBlocks.map(b => b.value || (b.latex ? `$${b.latex}$` : (b.url ? `![](${b.url})` : ''))).join(' ').trim();
+    const hasUnsetAnswers = res.trueFalseItems.some(tf => tf.correctAnswer === undefined);
+    const confidence = hasUnsetAnswers ? 0.6 : 0.95;
 
     return {
       id: `imported_q_${part}_${questionNumber}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
@@ -1116,15 +1362,22 @@ function processQuestionBlock(
       content: stemContent,
       contentBlocks: res.stemBlocks,
       trueFalseItems: res.trueFalseItems,
+      statements: res.trueFalseItems,
+      formulas,
+      images,
       imageUrl: firstImage,
       fallbackMode: 'content',
-      needsTeacherCheck: needsTeacherCheck || res.trueFalseItems.some(tf => tf.correctAnswer === undefined)
+      confidence,
+      needsTeacherCheck: needsTeacherCheck || hasUnsetAnswers,
+      needsReview: needsTeacherCheck || hasUnsetAnswers
     };
   }
 
   if (part === 3) {
     const res = extractSequentialBlocksForPart3(cleanedRawBlocks, block);
     const stemContent = res.stemBlocks.map(b => b.value || (b.latex ? `$${b.latex}$` : (b.url ? `![](${b.url})` : ''))).join(' ').trim();
+    const hasAnswers = res.shortAnswerConfig.correctAnswers.length > 0;
+    const confidence = hasAnswers ? 0.95 : 0.5;
 
     return {
       id: `imported_q_${part}_${questionNumber}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
@@ -1136,11 +1389,16 @@ function processQuestionBlock(
       content: stemContent,
       contentBlocks: res.stemBlocks,
       shortAnswerConfig: res.shortAnswerConfig,
+      correctAnswers: res.shortAnswerConfig.correctAnswers,
       solution: res.solution,
       solutionBlocks: res.solutionBlocks,
+      formulas,
+      images,
       imageUrl: firstImage,
       fallbackMode: 'content',
-      needsTeacherCheck: needsTeacherCheck || res.shortAnswerConfig.correctAnswers.length === 0
+      confidence,
+      needsTeacherCheck: needsTeacherCheck || !hasAnswers,
+      needsReview: needsTeacherCheck || !hasAnswers
     };
   }
 
@@ -1160,9 +1418,13 @@ function processQuestionBlock(
     essayGuide: res.essayGuide,
     solution: res.solution,
     solutionBlocks: res.solutionBlocks,
+    formulas,
+    images,
     imageUrl: firstImage,
     fallbackMode: 'content',
-    needsTeacherCheck
+    confidence: 0.9,
+    needsTeacherCheck,
+    needsReview: needsTeacherCheck
   };
 }
 
@@ -1173,18 +1435,15 @@ function processQuestionBlock(
  * - Fixes function representation duplicate parens (f(x))) -> f(x))
  * - Cleans and balances interval parentheses ((a; b)) -> (a; b)
  * - Preserves valid mathematical constructs (f(g(x)), (x+1)^2, coordinates, intervals [a; b), [a; b])
- * - Merges adjacent text blocks and logs diagnostic info in DEV
+ * - Merges adjacent text blocks
  */
 export function normalizeImportedQuestion(q: Question): Question {
-  // Comprehensive helper to clean mathematical formulas and text
   const cleanMathString = (s: string): string => {
     if (!s) return '';
-    let res = s
-      // Remove any fake alt text / captions
+    return s
       .replace(/!\[\s*Hình minh họa\s*\]/gi, '![]')
       .replace(/!\[\s*Công thức MathType\s*\]/gi, '![]')
       .replace(/Hình minh họa/gi, '')
-      // Fix duplicate boundary signs
       .replace(/y\s*==\s*/g, 'y = ')
       .replace(/==+/g, '=')
       .replace(/=\s*=/g, '=')
@@ -1193,91 +1452,74 @@ export function normalizeImportedQuestion(q: Question): Question {
       .replace(/(\\infty)+/g, '\\infty')
       .replace(/-\s*\\infty/g, '-\\infty')
       .replace(/\+\s*\\infty/g, '+\\infty')
-      // Fix function duplicate parentheses: f(x))) -> f(x)
       .replace(/f'\s*\(+\s*x\s*[\)\s]*/g, "f'(x)")
       .replace(/f\s*\(+\s*x\s*[\)\s]*/g, "f(x)")
       .replace(/f'\s*\(\s*x\s*\)[\)\s]*/g, "f'(x)")
       .replace(/f\s*\(\s*x\s*\)[\)\s]*/g, "f(x)")
       .replace(/f\(\(x/g, "f(x)")
       .replace(/f'\(\(x/g, "f'(x)")
-      // Fix double parentheses on intervals: ((a; b)) -> (a; b)
       .replace(/\(\(\s*([^;\$]+;\s*[^;\$]+)\s*\)\)/g, '($1)')
       .replace(/\(\(\s*([^;\$]+;\s*[^;\$]+)\s*\)/g, '($1)')
       .replace(/\(\s*([^;\$]+;\s*[^;\$]+)\s*\)\)/g, '($1)')
-      // Clean sets and greek symbols
       .replace(/\\mathbb\{R\}\s*(\\Upsilon|[^\w\s\$\\\,\;\:\.\(\)\[\]\{\}\+\-\*\/\=\<\>\^])+/g, '\\mathbb{R}')
       .replace(/\\mathbb\{R\}\s*\\Upsilon/g, '\\mathbb{R}')
       .replace(/\\Upsilon\b/g, '')
       .replace(/\\mathbb\{R\}\s*\?/g, '\\mathbb{R}')
       .replace(/\s+/g, ' ')
       .trim();
-
-    return res;
   };
 
-  let content = cleanMathString(q.content || '');
+  const content = cleanMathString(q.content || '');
 
-  // 2. Clean contentBlocks
-  let contentBlocks = (q.contentBlocks || [])
+  const contentBlocks = (q.contentBlocks || [])
     .filter(b => {
-      if (b.type === 'text') return Boolean(b.value && b.value.trim());
-      if (b.type === 'math') return Boolean(b.latex && b.latex.trim());
-      if (b.type === 'math-image') return Boolean(b.url && b.url.trim());
-      if (b.type === 'image') return Boolean(b.url && b.url.trim());
-      if (b.type === 'warning') return Boolean(b.warningMessage && b.warningMessage.trim());
+      if (b.type === 'text' || b.kind === 'paragraph') return Boolean((b.value || b.content || '').trim());
+      if (b.type === 'math' || b.kind === 'inlineMath' || b.kind === 'displayMath') return Boolean(b.latex && b.latex.trim());
+      if (b.type === 'image' || b.kind === 'image') return Boolean(b.url && b.url.trim());
       return true;
     })
     .map(b => {
-      if (b.type === 'text') {
-        return { ...b, value: cleanMathString(b.value || '') };
+      if (b.type === 'text' || b.kind === 'paragraph') {
+        const val = cleanMathString(b.value || b.content || '');
+        return { ...b, value: val, content: val };
       }
-      if (b.type === 'math') {
-        let l = cleanMathString(b.latex || '')
-          .replace(/==+/g, '=')
-          .replace(/\(\(+/g, '(')
-          .replace(/\)\)+/g, ')');
+      if (b.type === 'math' || b.kind === 'inlineMath' || b.kind === 'displayMath') {
+        const l = cleanMathString(b.latex || '').replace(/==+/g, '=').replace(/\(\(+/g, '(').replace(/\)\)+/g, ')');
         return { ...b, latex: l.trim() };
-      }
-      if (b.type === 'image') {
-        const alt = (b.alt && !b.alt.includes('Hình minh họa') && !b.alt.includes('MathType')) ? b.alt : undefined;
-        return { ...b, alt };
       }
       return b;
     });
 
-  // Merge consecutive text blocks
   const mergedBlocks: ContentBlock[] = [];
   for (const blk of contentBlocks) {
     const prev = mergedBlocks[mergedBlocks.length - 1];
-    if (prev && prev.type === 'text' && blk.type === 'text') {
-      prev.value = ((prev.value || '') + ' ' + (blk.value || '')).trim();
+    if (prev && (prev.type === 'text' || prev.kind === 'paragraph') && (blk.type === 'text' || blk.kind === 'paragraph')) {
+      const mergedVal = ((prev.value || prev.content || '') + ' ' + (blk.value || blk.content || '')).trim();
+      prev.value = mergedVal;
+      prev.content = mergedVal;
     } else {
       mergedBlocks.push(blk);
     }
   }
 
-  // 3. Clean options (Part I)
-  let options = q.options?.map(opt => {
+  const options = q.options?.map(opt => {
     let optContent = cleanMathString(opt.content);
-
-    // Format interval (a; b)
     if (optContent.includes(';')) {
-      if (!optContent.startsWith('(') && !optContent.startsWith('[')) {
-        optContent = '(' + optContent;
-      }
-      if (!optContent.endsWith(')') && !optContent.endsWith(']')) {
-        optContent = optContent + ')';
-      }
+      if (!optContent.startsWith('(') && !optContent.startsWith('[')) optContent = '(' + optContent;
+      if (!optContent.endsWith(')') && !optContent.endsWith(']')) optContent = optContent + ')';
       optContent = optContent.replace(/^\(\s*\(\s*([^;\)]+;\s*[^;\)]+)\s*\)\s*\)$/, '($1)');
     }
 
     const optBlocks = (opt.contentBlocks && opt.contentBlocks.length > 0)
       ? opt.contentBlocks.map(b => {
-          if (b.type === 'text') return { ...b, value: cleanMathString(b.value || '') };
-          if (b.type === 'math') return { ...b, latex: cleanMathString(b.latex || '') };
+          if (b.type === 'text' || b.kind === 'paragraph') {
+            const v = cleanMathString(b.value || b.content || '');
+            return { ...b, value: v, content: v };
+          }
+          if (b.type === 'math' || b.kind === 'inlineMath' || b.kind === 'displayMath') return { ...b, latex: cleanMathString(b.latex || '') };
           return b;
         })
-      : [{ type: 'text' as const, value: optContent }];
+      : [{ type: 'text' as const, kind: 'paragraph' as const, value: optContent, content: optContent }];
 
     return {
       ...opt,
@@ -1286,16 +1528,18 @@ export function normalizeImportedQuestion(q: Question): Question {
     };
   });
 
-  // 4. Clean True/False items (Part II)
-  let trueFalseItems = q.trueFalseItems?.map(tf => {
-    let c = cleanMathString(tf.content);
+  const trueFalseItems = q.trueFalseItems?.map(tf => {
+    const c = cleanMathString(tf.content);
     const tfBlocks = (tf.contentBlocks && tf.contentBlocks.length > 0)
       ? tf.contentBlocks.map(b => {
-          if (b.type === 'text') return { ...b, value: cleanMathString(b.value || '') };
-          if (b.type === 'math') return { ...b, latex: cleanMathString(b.latex || '') };
+          if (b.type === 'text' || b.kind === 'paragraph') {
+            const v = cleanMathString(b.value || b.content || '');
+            return { ...b, value: v, content: v };
+          }
+          if (b.type === 'math' || b.kind === 'inlineMath' || b.kind === 'displayMath') return { ...b, latex: cleanMathString(b.latex || '') };
           return b;
         })
-      : [{ type: 'text' as const, value: c }];
+      : [{ type: 'text' as const, kind: 'paragraph' as const, value: c, content: c }];
 
     return {
       ...tf,
@@ -1304,26 +1548,15 @@ export function normalizeImportedQuestion(q: Question): Question {
     };
   });
 
-  // 5. Clean solution
-  let solution = q.solution ? cleanMathString(q.solution) : undefined;
-  let solutionBlocks = q.solutionBlocks?.map(b => {
-    if (b.type === 'text') return { ...b, value: cleanMathString(b.value || '') };
-    if (b.type === 'math') return { ...b, latex: cleanMathString(b.latex || '') };
+  const solution = q.solution ? cleanMathString(q.solution) : undefined;
+  const solutionBlocks = q.solutionBlocks?.map(b => {
+    if (b.type === 'text' || b.kind === 'paragraph') {
+      const v = cleanMathString(b.value || b.content || '');
+      return { ...b, value: v, content: v };
+    }
+    if (b.type === 'math' || b.kind === 'inlineMath' || b.kind === 'displayMath') return { ...b, latex: cleanMathString(b.latex || '') };
     return b;
   });
-
-  // Diagnostic log in dev
-  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production') {
-    console.log('[DocxParser Diagnostic]', {
-      questionNumber: q.questionNumber,
-      part: q.part,
-      detectedType: q.type,
-      blocksCount: mergedBlocks.length,
-      hasImage: Boolean(q.imageUrl),
-      optionsCount: options?.length,
-      tfCount: trueFalseItems?.length
-    });
-  }
 
   return {
     ...q,
@@ -1331,6 +1564,7 @@ export function normalizeImportedQuestion(q: Question): Question {
     contentBlocks: mergedBlocks,
     options,
     trueFalseItems,
+    statements: trueFalseItems,
     solution,
     solutionBlocks
   };

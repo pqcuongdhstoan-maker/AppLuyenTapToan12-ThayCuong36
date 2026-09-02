@@ -1,12 +1,65 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useRef, useState, Component, ErrorInfo, ReactNode } from 'react';
 import katex from 'katex';
 import { ContentBlock } from '../../types';
+import { Maximize2, X, ZoomIn } from 'lucide-react';
+
+declare global {
+  interface Window {
+    MathJax?: {
+      typesetPromise?: (elements?: HTMLElement[]) => Promise<void>;
+      typesetClear?: (elements?: HTMLElement[]) => void;
+      startup?: {
+        promise?: Promise<void>;
+      };
+    };
+  }
+}
 
 interface MathRendererProps {
   content?: string;
   blocks?: ContentBlock[];
   className?: string;
   inline?: boolean;
+  allowZoom?: boolean;
+}
+
+interface ErrorBoundaryProps {
+  children: ReactNode;
+  fallbackText?: string;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error?: Error;
+}
+
+/**
+ * Math Error Boundary to catch any rendering errors and prevent white screens
+ */
+export class MathErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.warn('[MathErrorBoundary] Caught formula render error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <span className="katex-error inline-block text-rose-600 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5 text-xs font-mono">
+          {this.props.fallbackText || '[Lỗi hiển thị công thức]'}
+        </span>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 /**
@@ -26,7 +79,7 @@ export function preprocessMathContent(rawText: string): string {
     cleanCols = cleanCols.replace(/c/g, 'c|').replace(/\|+/g, '|');
     if (!cleanCols.startsWith('{')) cleanCols = '{' + cleanCols;
     if (!cleanCols.endsWith('}')) cleanCols = cleanCols + '}';
-    
+
     const cleanBody = body
       .replace(/\\hline/g, ' \\hline ')
       .replace(/\\nearrow/g, ' \\nearrow ')
@@ -61,7 +114,7 @@ export function preprocessMathContent(rawText: string): string {
     .replace(/([a-zA-Z])₂/g, '$1_2')
     .replace(/([a-zA-Z])₃/g, '$1_3');
 
-  // 7. Upgrade all \frac to \dfrac (display fraction) for balanced spacing and exponent scaling
+  // 7. Upgrade all \frac to \dfrac (display fraction) for balanced spacing
   text = text.replace(/\\frac(?=\{)/g, '\\dfrac');
 
   // 8. Auto-detect isolated LaTeX commands missing $ delimiters
@@ -69,7 +122,19 @@ export function preprocessMathContent(rawText: string): string {
     return `$${match}$`;
   });
 
-  // 9. Normalize duplicate parentheses and common mathematical function patterns
+  // 9. Clean residual MathType / WMF artifacts
+  text = text
+    .replace(/&\\dots\\forall/gi, '')
+    .replace(/\\dots\\forall/gi, '')
+    .replace(/\\forall\s*\\forall/gi, '\\forall ')
+    .replace(/\\in\s*\\in/gi, '\\in ')
+    .replace(/\\mathbb\{R\}\s*\\mathbb\{R\}/gi, '\\mathbb{R}')
+    .replace(/\.&\s*\\dots\\forall/gi, '')
+    .replace(/&\s*\\dots/gi, '')
+    .replace(/\\infty\./g, '\\infty')
+    .replace(/1\./g, '1');
+
+  // 10. Normalize duplicate parentheses and common mathematical function patterns
   text = text
     .replace(/f'\s*\(+\s*x\s*[\)\s]*/g, "f'(x)")
     .replace(/f\s*\(+\s*x\s*[\)\s]*/g, "f(x)")
@@ -89,48 +154,6 @@ export function preprocessMathContent(rawText: string): string {
 let arrowIdCounter = 0;
 
 /**
- * Generates bold, long, perfectly symmetrical LaTeX stealth vector arrows for variation tables
- */
-function createSvgArrow(type: 'up' | 'down' | 'right'): string {
-  const markerId = `stealth_arr_${++arrowIdCounter}`;
-
-  if (type === 'up') {
-    return `<div class="w-full flex items-center justify-center min-w-[6rem] sm:min-w-[8.5rem] py-1 px-1">
-      <svg viewBox="0 0 140 38" class="w-full max-w-[150px] h-7 sm:h-8 overflow-visible">
-        <defs>
-          <marker id="${markerId}" viewBox="0 0 10 10" refX="7.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-            <path d="M 0 1.5 L 8.5 5 L 0 8.5 L 2 5 Z" fill="#0f172a" />
-          </marker>
-        </defs>
-        <line x1="4" y1="30" x2="132" y2="8" stroke="#0f172a" stroke-width="1.6" stroke-linecap="round" marker-end="url(#${markerId})" />
-      </svg>
-    </div>`;
-  }
-  if (type === 'down') {
-    return `<div class="w-full flex items-center justify-center min-w-[6rem] sm:min-w-[8.5rem] py-1 px-1">
-      <svg viewBox="0 0 140 38" class="w-full max-w-[150px] h-7 sm:h-8 overflow-visible">
-        <defs>
-          <marker id="${markerId}" viewBox="0 0 10 10" refX="7.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-            <path d="M 0 1.5 L 8.5 5 L 0 8.5 L 2 5 Z" fill="#0f172a" />
-          </marker>
-        </defs>
-        <line x1="4" y1="8" x2="132" y2="30" stroke="#0f172a" stroke-width="1.6" stroke-linecap="round" marker-end="url(#${markerId})" />
-      </svg>
-    </div>`;
-  }
-  return `<div class="w-full flex items-center justify-center min-w-[6rem] sm:min-w-[8.5rem] py-1 px-1">
-    <svg viewBox="0 0 140 22" class="w-full max-w-[150px] h-5 overflow-visible">
-      <defs>
-        <marker id="${markerId}" viewBox="0 0 10 10" refX="7.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M 0 1.5 L 8.5 5 L 0 8.5 L 2 5 Z" fill="#0f172a" />
-        </marker>
-      </defs>
-      <line x1="4" y1="11" x2="132" y2="11" stroke="#0f172a" stroke-width="1.6" stroke-linecap="round" marker-end="url(#${markerId})" />
-    </svg>
-  </div>`;
-}
-
-/**
  * Formats math symbols into clean Unicode text for SVG rendering
  */
 function formatMathForSvg(raw: string): string {
@@ -147,8 +170,7 @@ function formatMathForSvg(raw: string): string {
 }
 
 /**
- * Converts variation table into a high-precision vector SVG diagram
- * where arrows start EXACTLY at the source number and point EXACTLY at the destination number.
+ * Converts variation table into a vector SVG diagram
  */
 export function renderVariationTableSvg(parsedRows: string[][]): string {
   if (parsedRows.length < 3) return '';
@@ -156,7 +178,6 @@ export function renderVariationTableSvg(parsedRows: string[][]): string {
   const maxCols = Math.max(...parsedRows.map(r => r.length));
   if (maxCols < 3) return '';
 
-  // Extract labels
   let xLabel = formatMathForSvg(parsedRows[0][0]) || 'x';
   let fPrimeLabel = formatMathForSvg(parsedRows[1][0]) || "f '(x)";
   let fLabel = formatMathForSvg(parsedRows[2][0]) || 'f(x)';
@@ -168,30 +189,24 @@ export function renderVariationTableSvg(parsedRows: string[][]): string {
     fLabel = fLabel === 'y' ? 'y' : 'f(x)';
   }
 
-  // Calculate layout geometry
   const headerWidth = 65;
   const numDataCols = maxCols - 1;
   const colWidth = Math.max(70, Math.min(100, Math.floor(480 / numDataCols)));
   const totalWidth = headerWidth + numDataCols * colWidth + 20;
   const totalHeight = 175;
 
-  const row1Y = 27; // x row
-  const row2Y = 67; // f'(x) row
-  const line1Y = 42; // divide under x
-  const line2Y = 84; // divide under f'(x)
-  const topValY = 110; // f(x) top values
-  const botValY = 154; // f(x) bottom values
+  const row1Y = 27;
+  const row2Y = 67;
+  const line1Y = 42;
+  const line2Y = 84;
+  const topValY = 110;
+  const botValY = 154;
 
-  // Find column center coordinates
   const colX: number[] = [];
   for (let c = 1; c < maxCols; c++) {
     colX[c] = headerWidth + (c - 0.5) * colWidth;
   }
 
-  // Extract f(x) points and arrows
-  // In parsedRows:
-  // parsedRows[2] has top values
-  // parsedRows[3] (if exists) has bottom values and arrows
   const topRow = parsedRows[2] || [];
   const botRow = parsedRows[3] || [];
 
@@ -210,31 +225,17 @@ export function renderVariationTableSvg(parsedRows: string[][]): string {
     const botCell = formatMathForSvg(botRow[c] || '');
 
     if (topCell && !topCell.includes('↗') && !topCell.includes('↘')) {
-      nodes.push({
-        col: c,
-        x: colX[c],
-        y: topValY,
-        val: topCell,
-        level: 'top'
-      });
+      nodes.push({ col: c, x: colX[c], y: topValY, val: topCell, level: 'top' });
     }
     if (botCell && !botCell.includes('↗') && !botCell.includes('↘')) {
-      nodes.push({
-        col: c,
-        x: colX[c],
-        y: botValY,
-        val: botCell,
-        level: 'bottom'
-      });
+      nodes.push({ col: c, x: colX[c], y: botValY, val: botCell, level: 'bottom' });
     }
   }
 
-  // Sort nodes by column index
   nodes.sort((a, b) => a.col - b.col);
-
   const markerId = `stealth_arr_${++arrowIdCounter}`;
 
-  let svgContent = `<div class="my-6 overflow-x-auto flex justify-center py-2">
+  let svgContent = `<div class="my-4 overflow-x-auto flex justify-center py-2">
     <svg viewBox="0 0 ${totalWidth} ${totalHeight}" class="w-full max-w-2xl select-none font-serif" style="min-width: 320px;" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <marker id="${markerId}" viewBox="0 0 10 10" refX="7.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
@@ -242,20 +243,15 @@ export function renderVariationTableSvg(parsedRows: string[][]): string {
         </marker>
       </defs>
 
-      <!-- 1 Vertical Dividing Line -->
       <line x1="${headerWidth}" y1="4" x2="${headerWidth}" y2="${totalHeight - 6}" stroke="#334155" stroke-width="1.2" />
-
-      <!-- 2 Horizontal Dividing Lines -->
       <line x1="8" y1="${line1Y}" x2="${totalWidth - 8}" y2="${line1Y}" stroke="#334155" stroke-width="1.2" />
       <line x1="8" y1="${line2Y}" x2="${totalWidth - 8}" y2="${line2Y}" stroke="#334155" stroke-width="1.2" />
 
-      <!-- Header Labels (Left Column) -->
       <text x="${headerWidth / 2}" y="${row1Y}" text-anchor="middle" font-size="16" font-style="italic" fill="#0f172a" font-weight="600">${xLabel}</text>
       <text x="${headerWidth / 2}" y="${row2Y}" text-anchor="middle" font-size="16" font-style="italic" fill="#0f172a" font-weight="600">${fPrimeLabel}</text>
       <text x="${headerWidth / 2}" y="${(line2Y + totalHeight) / 2 + 5}" text-anchor="middle" font-size="16" font-style="italic" fill="#0f172a" font-weight="600">${fLabel}</text>
   `;
 
-  // Row 1: x values
   for (let c = 1; c < maxCols; c++) {
     const val = formatMathForSvg(parsedRows[0][c] || '');
     if (val) {
@@ -263,7 +259,6 @@ export function renderVariationTableSvg(parsedRows: string[][]): string {
     }
   }
 
-  // Row 2: f'(x) signs (+, -, 0, ||)
   for (let c = 1; c < maxCols; c++) {
     const val = formatMathForSvg(parsedRows[1][c] || '');
     if (val === '||' || val === '|') {
@@ -278,33 +273,25 @@ export function renderVariationTableSvg(parsedRows: string[][]): string {
     }
   }
 
-  // Row 3: f(x) nodes (numbers)
   nodes.forEach(node => {
     svgContent += `<text x="${node.x}" y="${node.y}" text-anchor="middle" font-size="16" font-weight="500" fill="#0f172a">${node.val}</text>`;
   });
 
-  // Row 3: Arrows connecting consecutive nodes directly!
   for (let i = 0; i < nodes.length - 1; i++) {
     const n1 = nodes[i];
     const n2 = nodes[i + 1];
-
-    // Estimate text width offset so arrow starts directly from edge of number
     const textOffset1 = Math.max(10, n1.val.length * 5 + 4);
     const textOffset2 = Math.max(10, n2.val.length * 5 + 4);
 
     let startX = n1.x + textOffset1;
     let endX = n2.x - textOffset2;
-
     let startY = n1.y - 5;
     let endY = n2.y - 5;
 
-    // Upward arrow: bottom to top
     if (n1.level === 'bottom' && n2.level === 'top') {
       startY = botValY - 6;
       endY = topValY - 2;
-    }
-    // Downward arrow: top to bottom
-    else if (n1.level === 'top' && n2.level === 'bottom') {
+    } else if (n1.level === 'top' && n2.level === 'bottom') {
       startY = topValY - 2;
       endY = botValY - 6;
     }
@@ -319,10 +306,9 @@ export function renderVariationTableSvg(parsedRows: string[][]): string {
 }
 
 /**
- * Converts LaTeX array/tabular and variation tables into crisp, textbook-grade HTML/SVG tables
+ * Converts LaTeX array/tabular into HTML/SVG table
  */
 export function renderLatexTableToHtml(rawTable: string): string {
-  // Strip outer array / tabular / center wrappers
   const content = rawTable
     .replace(/\\begin\{center\}/gi, '')
     .replace(/\\end\{center\}/gi, '')
@@ -330,7 +316,6 @@ export function renderLatexTableToHtml(rawTable: string): string {
     .replace(/\\end\{(?:tabular|array)\}/gi, '')
     .trim();
 
-  // Split into rows by \\
   const rawRows = content.split(/\\\\/g);
   const parsedRows: string[][] = [];
 
@@ -338,7 +323,6 @@ export function renderLatexTableToHtml(rawTable: string): string {
     const cleanRow = rawRow.replace(/\\hline/g, '').trim();
     if (!cleanRow) continue;
 
-    // Split row into cells by &
     const rawCells = cleanRow.split('&');
     const cells = rawCells.map(c => c.replace(/\$/g, '').trim());
     parsedRows.push(cells);
@@ -346,7 +330,6 @@ export function renderLatexTableToHtml(rawTable: string): string {
 
   if (parsedRows.length === 0) return '';
 
-  // Check if this is a variation table (contains x, f'/y', and arrows or levels)
   const isVariationTable = (
     parsedRows.length >= 3 &&
     (parsedRows[0][0]?.includes('x') || parsedRows[0][0]?.includes('X')) &&
@@ -358,16 +341,13 @@ export function renderLatexTableToHtml(rawTable: string): string {
     if (svgTable) return svgTable;
   }
 
-  // Fallback to HTML table for other generic mathematical tables / matrices
   const maxCols = Math.max(...parsedRows.map(r => r.length));
   let html = `<div class="my-4 overflow-x-auto flex justify-center py-1">
     <table class="border-collapse border border-slate-400 bg-white text-xs sm:text-sm font-sans shadow-xs rounded-xl overflow-hidden my-2 border-spacing-0">
       <tbody>`;
 
   parsedRows.forEach((row, rowIdx) => {
-    while (row.length < maxCols) {
-      row.push('');
-    }
+    while (row.length < maxCols) row.push('');
 
     const hasBottomBorder = rowIdx < parsedRows.length - 1;
     html += `<tr class="${hasBottomBorder ? 'border-b border-slate-300' : ''}">`;
@@ -408,9 +388,6 @@ export function renderFormattedText(content: string): string {
   if (!content) return '';
   try {
     const processedText = preprocessMathContent(content);
-
-    // Split text by markdown images: ![alt](url)
-    // and math delimiters: $$...$$ or $...$
     const regex = /(!\[[^\]]*\]\([^)]+\)|\$\$[\s\S]*?\$\$|\$[^\$\n]+?\$)/g;
     const parts = processedText.split(regex);
 
@@ -424,7 +401,7 @@ export function renderFormattedText(content: string): string {
         const src = imgMatch[2];
         const isInline = src.startsWith('data:image/svg+xml') || alt.toLowerCase().includes('công thức') || alt.toLowerCase().includes('mathtype');
         if (isInline) {
-          return `<img src="${src}" alt="" class="inline-block max-h-8 align-middle my-0.5 mx-1" />`;
+          return `<img src="${src}" alt="" class="inline-block max-h-8 align-middle my-0.5 mx-1 select-none" />`;
         }
         const cleanCaption = (alt && !alt.toLowerCase().includes('hình minh họa') && !alt.toLowerCase().includes('image') && !alt.toLowerCase().includes('mathtype') && !alt.toLowerCase().includes('công thức')) ? alt.trim() : '';
         return `<figure class="question-image my-3 flex flex-col items-center justify-center">
@@ -433,7 +410,7 @@ export function renderFormattedText(content: string): string {
         </figure>`;
       }
 
-      // 2. Block math: $$...$$ (including variation tables and matrices)
+      // 2. Block math: $$...$$
       if (part.startsWith('$$') && part.endsWith('$$') && part.length >= 4) {
         const rawMath = part.slice(2, -2).trim();
 
@@ -451,7 +428,7 @@ export function renderFormattedText(content: string): string {
             output: 'html'
           });
 
-          return `<div class="my-2 overflow-x-auto py-1 text-center">${mathHtml}</div>`;
+          return `<div class="math-display my-2 overflow-x-auto py-1 text-center" data-raw-math="${escapeHtml(cleanMath)}">${mathHtml}</div>`;
         } catch {
           return `<div class="katex-error text-rose-500 font-mono text-xs my-1 p-2 bg-rose-50 rounded-lg">[Lỗi công thức: ${escapeHtml(rawMath)}]</div>`;
         }
@@ -462,19 +439,20 @@ export function renderFormattedText(content: string): string {
         const rawMath = part.slice(1, -1).trim();
         try {
           const cleanMath = rawMath.replace(/\$/g, '');
-          return katex.renderToString(cleanMath, {
+          const mathHtml = katex.renderToString(cleanMath, {
             displayMode: false,
             throwOnError: false,
             strict: false,
             trust: true,
             output: 'html'
           });
+          return `<span class="math-inline inline-block align-middle my-0.5" data-raw-math="${escapeHtml(cleanMath)}">${mathHtml}</span>`;
         } catch {
           return `<span class="katex-error text-rose-500 font-mono text-xs">[${escapeHtml(rawMath)}]</span>`;
         }
       }
 
-      // 4. Plain text: check if plain text has un-delimited tabular or array
+      // 4. Plain text
       if (part.includes('\\begin{tabular}') || part.includes('\\begin{array}')) {
         return renderLatexTableToHtml(part);
       }
@@ -488,38 +466,60 @@ export function renderFormattedText(content: string): string {
   }
 }
 
-export const MathRenderer: React.FC<MathRendererProps> = ({ content, blocks, className = '', inline = false }) => {
+export const MathRenderer: React.FC<MathRendererProps> = ({
+  content,
+  blocks,
+  className = '',
+  inline = false,
+  allowZoom = false
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [zoomContent, setZoomContent] = useState<string | null>(null);
+
   const renderedHtml = useMemo(() => {
     try {
-      // 1. If blocks array is provided, render each block sequentially
       if (blocks && Array.isArray(blocks) && blocks.length > 0) {
         const htmlList = blocks.map((block) => {
           if (!block) return '';
-          if (block.type === 'text') {
-            return renderFormattedText(block.value || '');
+          if (block.type === 'text' || block.kind === 'paragraph') {
+            return renderFormattedText(block.value || block.content || '');
           }
-          if (block.type === 'math') {
+          if (block.type === 'math' || block.type === 'inlineMath' || block.type === 'displayMath' || block.kind === 'inlineMath' || block.kind === 'displayMath') {
             const rawMath = (block.latex || '').trim();
+            const isDisplay = block.displayMode || block.type === 'displayMath' || block.kind === 'displayMath';
             if (!rawMath) return '';
+
             if (rawMath.includes('\\begin{array}') || rawMath.includes('\\begin{tabular}') || (rawMath.includes('&') && rawMath.includes('\\\\'))) {
               return renderLatexTableToHtml(rawMath);
             }
+
             try {
-              return katex.renderToString(rawMath.replace(/\$/g, ''), {
-                displayMode: false,
+              const html = katex.renderToString(rawMath.replace(/\$/g, ''), {
+                displayMode: isDisplay,
                 throwOnError: false,
                 strict: false,
                 trust: true,
                 output: 'html'
               });
+              return isDisplay
+                ? `<div class="math-display my-2 overflow-x-auto py-1 text-center" data-raw-math="${escapeHtml(rawMath)}">${html}</div>`
+                : `<span class="math-inline inline-block align-middle my-0.5" data-raw-math="${escapeHtml(rawMath)}">${html}</span>`;
             } catch {
               return `<span class="katex-error text-rose-500 font-mono text-xs">[Lỗi công thức: ${escapeHtml(rawMath)}]</span>`;
+            }
+          }
+          if (block.type === 'table' || block.kind === 'table') {
+            if (block.latexTable) {
+              return renderLatexTableToHtml(block.latexTable);
+            }
+            if (block.rows && block.rows.length > 0) {
+              return renderVariationTableSvg(block.rows) || renderFormattedText(block.value || '');
             }
           }
           if (block.type === 'math-image') {
             return `<img src="${block.url || ''}" alt="" class="inline-block max-h-8 align-middle my-0.5 mx-0.5 select-none" />`;
           }
-          if (block.type === 'image') {
+          if (block.type === 'image' || block.kind === 'image') {
             const isInline = (block.url || '').startsWith('data:image/svg+xml') || (block.alt || '').toLowerCase().includes('công thức') || (block.alt || '').toLowerCase().includes('mathtype');
             if (isInline) {
               return `<img src="${block.url || ''}" alt="" class="inline-block max-h-8 align-middle my-0.5 mx-0.5 select-none" />`;
@@ -529,6 +529,9 @@ export const MathRenderer: React.FC<MathRendererProps> = ({ content, blocks, cla
               <img src="${block.url || ''}" alt="${escapeHtml(cleanCaption)}" class="max-h-72 max-w-full object-contain rounded-2xl border border-slate-200 shadow-xs bg-white p-2" onerror="this.onerror=null; this.parentElement.style.display='none';" />
               ${cleanCaption ? `<figcaption class="text-[12px] text-slate-500 mt-1.5 font-medium italic">${escapeHtml(cleanCaption)}</figcaption>` : ''}
             </figure>`;
+          }
+          if (block.type === 'lineBreak' || block.kind === 'lineBreak') {
+            return '<br/>';
           }
           if (block.type === 'warning') {
             return `<div class="my-2 p-2.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs flex items-center gap-2 font-medium">
@@ -543,25 +546,82 @@ export const MathRenderer: React.FC<MathRendererProps> = ({ content, blocks, cla
       console.warn('MathRenderer blocks render warning:', e);
     }
 
-    // 2. Fallback to processing content string
     if (!content) return '';
     return renderFormattedText(content);
   }, [content, blocks]);
 
+  // MathJax typesetPromise trigger for custom MathML / LaTeX nodes if MathJax is initialized
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.MathJax && window.MathJax.typesetPromise && containerRef.current) {
+      const container = containerRef.current;
+      const timer = setTimeout(() => {
+        try {
+          if (document.body.contains(container)) {
+            window.MathJax?.typesetPromise?.([container]).catch(err => {
+              console.warn('[MathJax typeset warning]', err);
+            });
+          }
+        } catch {}
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [renderedHtml]);
+
   if (inline) {
     return (
-      <span
-        className={`math-content inline ${className}`}
-        dangerouslySetInnerHTML={{ __html: renderedHtml }}
-      />
+      <MathErrorBoundary fallbackText={content}>
+        <span
+          ref={containerRef as any}
+          className={`math-content math-inline ${className}`}
+          dangerouslySetInnerHTML={{ __html: renderedHtml }}
+        />
+      </MathErrorBoundary>
     );
   }
 
   return (
-    <div
-      className={`math-content leading-relaxed ${className}`}
-      dangerouslySetInnerHTML={{ __html: renderedHtml }}
-    />
+    <MathErrorBoundary fallbackText={content}>
+      <div className="relative group/math">
+        <div
+          ref={containerRef}
+          className={`math-content leading-relaxed ${className}`}
+          dangerouslySetInnerHTML={{ __html: renderedHtml }}
+        />
+
+        {allowZoom && (content || blocks) && (
+          <button
+            type="button"
+            onClick={() => setZoomContent(renderedHtml)}
+            className="absolute top-1 right-1 opacity-0 group-hover/math:opacity-100 p-1 bg-white/90 border border-slate-200 shadow-xs rounded-md text-slate-500 hover:text-indigo-600 transition-all text-xs flex items-center gap-1"
+            title="Phóng to công thức"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
+        )}
+
+        {/* Zoom Modal */}
+        {zoomContent && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl p-6 max-w-3xl w-full shadow-2xl border border-slate-200 max-h-[85vh] overflow-y-auto relative animate-in zoom-in-95">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                <span className="text-xs font-bold text-slate-700 uppercase">Chế độ xem chi tiết công thức toán</span>
+                <button
+                  type="button"
+                  onClick={() => setZoomContent(null)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div
+                className="text-base sm:text-lg leading-relaxed p-4 bg-slate-50 rounded-2xl border border-slate-200 overflow-x-auto"
+                dangerouslySetInnerHTML={{ __html: zoomContent }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </MathErrorBoundary>
   );
 };
 

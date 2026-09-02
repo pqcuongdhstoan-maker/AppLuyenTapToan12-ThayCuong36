@@ -25,6 +25,7 @@ import {
   INITIAL_EXAMS,
   INITIAL_SYSTEM_SETTINGS
 } from '../data/seedData';
+import { evaluateShortAnswerEquivalence } from './mathSyntaxValidator';
 
 const KEYS = {
   CURRENT_USER: 'tu_luyen_toan_12_current_user',
@@ -783,20 +784,10 @@ class StorageService {
       // Part III: Short Answer (0.5 pt each)
       if (q.part === 3 && q.type === QuestionType.SHORT_ANSWER && q.shortAnswerConfig) {
         if (userAns && userAns.shortAnswer) {
-          const userVal = userAns.shortAnswer.trim().toLowerCase().replace(/\s+/g, '');
-          const isCorrect = q.shortAnswerConfig.correctAnswers.some((ans) => {
-            const normAns = ans.trim().toLowerCase().replace(/\s+/g, '');
-            if (userVal === normAns) return true;
-
-            // Numeric approximation comparison
-            const numUser = parseFloat(userVal.replace(',', '.'));
-            const numAns = parseFloat(normAns.replace(',', '.'));
-            if (!isNaN(numUser) && !isNaN(numAns)) {
-              const tol = q.shortAnswerConfig?.tolerance ?? 0.01;
-              return Math.abs(numUser - numAns) <= tol;
-            }
-            return false;
-          });
+          const userVal = userAns.shortAnswer.trim();
+          const targetAnswers = q.shortAnswerConfig.correctAnswers || q.correctAnswers || [];
+          const tol = q.shortAnswerConfig?.tolerance ?? 0.01;
+          const { isCorrect } = evaluateShortAnswerEquivalence(userVal, targetAnswers, tol);
 
           if (isCorrect) {
             part3Score += q.points || 0.5;

@@ -1,11 +1,30 @@
-/**
- * Precise MTEF (MathType Equation Format) Binary Decoder to LaTeX
- * Supports MathType 3.x, 5.x, 6.x, and 7.x binary streams from Word documents.
- * Correctly decodes records (LINE, CHAR, TMPL, SUB, SUPER, MATRIX, PILE)
- * and stops cleanly at END records without reading metafile trailing control codes.
- */
+import fs from 'fs';
+import zlib from 'zlib';
 
-const UNICODE_MAP: { [code: number]: string } = {
+function unzip(buffer) {
+  const entries = {};
+  let offset = 0;
+  while (offset < buffer.length - 4) {
+    if (buffer.readUInt32LE(offset) !== 0x04034b50) { offset++; continue; }
+    const compMethod = buffer.readUInt16LE(offset + 8);
+    const compSize = buffer.readUInt32LE(offset + 18);
+    const nameLen = buffer.readUInt16LE(offset + 26);
+    const extraLen = buffer.readUInt16LE(offset + 28);
+    const filename = buffer.toString('utf8', offset + 30, offset + 30 + nameLen);
+    const dataStart = offset + 30 + nameLen + extraLen;
+    const compData = buffer.subarray(dataStart, dataStart + compSize);
+    let uncompressed = null;
+    if (compMethod === 0) uncompressed = compData;
+    else if (compMethod === 8) {
+      try { uncompressed = zlib.inflateRawSync(compData); } catch (e) {}
+    }
+    if (uncompressed) entries[filename] = uncompressed;
+    offset = dataStart + compSize;
+  }
+  return entries;
+}
+
+const UNICODE_MAP = {
   0x211D: '\\mathbb{R}',
   0x2124: '\\mathbb{Z}',
   0x2115: '\\mathbb{N}',
@@ -34,7 +53,7 @@ const UNICODE_MAP: { [code: number]: string } = {
   0x2205: '\\emptyset '
 };
 
-const SYMBOL_MAP: { [code: number]: string } = {
+const SYMBOL_MAP = {
   0x20: ' ',
   0x21: '!',
   0x22: '\\forall ',
@@ -157,33 +176,31 @@ const SYMBOL_MAP: { [code: number]: string } = {
   0xF9: '\\}'
 };
 
-export class MtefDecoder {
-  private bytes: Uint8Array;
-  private pos: number = 0;
-  private mtefVersion: number = 5;
-
-  constructor(buffer: ArrayBuffer | Uint8Array) {
+export class PreciseMtefDecoder {
+  constructor(buffer) {
     this.bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+    this.pos = 0;
+    this.mtefVersion = 5;
   }
 
-  public decode(): string {
+  decode() {
     try {
-      // 1. MathType 7 Embedded TeX string detection
+      // 1. MathType 7 TeX header
       const rawStr = this.bytesToString();
       const texMatch = rawStr.match(/TeX Input Language\x00\{([^\x00]*)\}\x00/);
       if (texMatch) {
-        return this.cleanLatex(texMatch[1]);
+        return this.clean(texMatch[1]);
       }
 
-      // 2. Find MTEF Header
+      // 2. Find MTEF header
       let mtefStart = -1;
       for (let i = 0; i < this.bytes.length - 3; i++) {
-        if ((this.bytes[i] === 0x05 || this.bytes[i] === 0x03) && this.bytes[i + 1] === 0x01 && this.bytes[i + 2] === 0x00) {
+        if ((this.bytes[i] === 0x05 || this.bytes[i] === 0x03) && this.bytes[i+1] === 0x01 && this.bytes[i+2] === 0x00) {
           mtefStart = i;
           this.mtefVersion = this.bytes[i];
           break;
         }
-        if (this.bytes[i] === 0x1C && this.bytes[i + 1] === 0x05 && this.bytes[i + 2] === 0x01) {
+        if (this.bytes[i] === 0x1C && this.bytes[i+1] === 0x05 && this.bytes[i+2] === 0x01) {
           mtefStart = i + 1;
           this.mtefVersion = 5;
           break;
@@ -192,11 +209,12 @@ export class MtefDecoder {
 
       if (mtefStart === -1) return '';
 
-      // Find the first root LINE record: 0x0A 0x01, 0x0A 0x00, or 0x01 0x00
+      // Find the first root LINE record: 0x0A 0x01 or 0x0A 0x00 or 0x01 0x00
       let lineStart = -1;
       for (let i = mtefStart + 5; i < Math.min(mtefStart + 450, this.bytes.length - 2); i++) {
-        if (this.bytes[i] === 0x0A && (this.bytes[i + 1] === 0x01 || this.bytes[i + 1] === 0x00 || this.bytes[i + 1] === 0x02)) {
-          const nextTag = this.bytes[i + 2] === 0x00 ? this.bytes[i + 3] : this.bytes[i + 2];
+        if (this.bytes[i] === 0x0A && (this.bytes[i+1] === 0x01 || this.bytes[i+1] === 0x00 || this.bytes[i+1] === 0x02)) {
+          // Check if followed by CHAR (0x02) or TMPL (0x03) or LINE (0x01)
+          const nextTag = this.bytes[i+2] === 0x00 ? this.bytes[i+3] : this.bytes[i+2];
           if (nextTag === 0x02 || nextTag === 0x03 || nextTag === 0x01 || nextTag === 0x0B || nextTag === 0x0C || nextTag === 0x00) {
             lineStart = i;
             break;
@@ -210,14 +228,13 @@ export class MtefDecoder {
 
       this.pos = lineStart;
       const res = this.parseEquation();
-      return this.cleanLatex(res);
+      return this.clean(res);
     } catch (e) {
-      console.warn('MTEF decode warning:', e);
       return '';
     }
   }
 
-  private bytesToString(): string {
+  bytesToString() {
     let s = '';
     for (let i = 0; i < Math.min(this.bytes.length, 1000); i++) {
       s += String.fromCharCode(this.bytes[i]);
@@ -225,17 +242,16 @@ export class MtefDecoder {
     return s;
   }
 
-  private parseEquation(): string {
+  parseEquation() {
     let out = '';
     while (this.pos < this.bytes.length) {
-      // Check for End of stream in OLE directory structure
       if (this.bytes[this.pos] === 0x45 && this.pos + 2 < this.bytes.length && this.bytes[this.pos + 1] === 0x00 && this.bytes[this.pos + 2] === 0x71) {
         break; // "Equation Native"
       }
 
       const tag = this.bytes[this.pos++];
       if (tag === 0x00) {
-        // END record: cleanly closes current scope
+        // END record
         break;
       }
 
@@ -243,13 +259,14 @@ export class MtefDecoder {
         // LINE record
         const lineOptions = this.bytes[this.pos++];
         if (tag === 0x0A && (lineOptions === 0x01 || lineOptions === 0x02)) {
+          // Advance past nudges if present
           if (this.bytes[this.pos] === 0x00) this.pos++;
         }
         out += this.parseEquation();
       } else if (tag === 0x02) {
         // CHAR record
-        this.pos++; // skip char options
-        const fontNum = this.bytes[this.pos++];
+        const options = this.bytes[this.pos++];
+        let fontNum = this.bytes[this.pos++];
         let charCode = 0;
         if (this.mtefVersion >= 5) {
           const lo = this.bytes[this.pos++];
@@ -261,17 +278,17 @@ export class MtefDecoder {
         out += this.getCharString(charCode, fontNum);
       } else if (tag === 0x03) {
         // TMPL record
-        this.pos++; // skip options
+        const options = this.bytes[this.pos++];
         const selector = this.bytes[this.pos++];
         const varLo = this.bytes[this.pos++];
         const varHi = this.bytes[this.pos++];
         const variation = varLo | (varHi << 8);
         out += this.getTemplateString(selector, variation);
       } else if (tag === 0x0B) {
-        // SUB (subscript)
+        // SUB
         out += '_{' + this.parseEquation() + '}';
       } else if (tag === 0x0C) {
-        // SUPER (superscript)
+        // SUPER
         out += '^{' + this.parseEquation() + '}';
       } else if (tag === 0x04) {
         // PILE
@@ -287,9 +304,10 @@ export class MtefDecoder {
     return out;
   }
 
-  private getCharString(code: number, _fontNum: number): string {
+  getCharString(code, fontNum) {
     if (UNICODE_MAP[code]) return UNICODE_MAP[code];
 
+    // Standard ASCII math
     if (code >= 0x20 && code <= 0x7E) {
       const ch = String.fromCharCode(code);
       if (ch === '<') return ' < ';
@@ -303,7 +321,7 @@ export class MtefDecoder {
     return '';
   }
 
-  private getTemplateString(selector: number, _variation: number): string {
+  getTemplateString(selector, variation) {
     switch (selector) {
       case 1: // Parentheses
         return '(' + this.parseEquation() + ')';
@@ -311,7 +329,7 @@ export class MtefDecoder {
         return '[' + this.parseEquation() + ']';
       case 3: // Braces
         return '\\{' + this.parseEquation() + '\\}';
-      case 4: // Absolute value / Bars
+      case 4: // Bars (abs)
         return '|' + this.parseEquation() + '|';
       case 6: { // Fraction
         const num = this.parseEquation();
@@ -358,12 +376,12 @@ export class MtefDecoder {
     }
   }
 
-  private getMatrixString(): string {
+  getMatrixString() {
     const rows = this.bytes[this.pos++];
     const cols = this.bytes[this.pos++];
-    const cellValues: string[] = [];
+    const cellValues = [];
     for (let r = 0; r < rows; r++) {
-      const row: string[] = [];
+      const row = [];
       for (let c = 0; c < cols; c++) {
         row.push(this.parseEquation());
       }
@@ -372,17 +390,13 @@ export class MtefDecoder {
     return `\\begin{pmatrix} ${cellValues.join(' \\\\ ')} \\end{pmatrix}`;
   }
 
-  private cleanLatex(s: string): string {
+  clean(s) {
     let res = s.trim();
-
-    // Remove any trailing metafile noise
     res = res.replace(/&\\dots\\forall/gi, '');
     res = res.replace(/\\dots\\forall/gi, '');
     res = res.replace(/\\forall\s*\\forall/gi, '\\forall ');
     res = res.replace(/&/g, ' ');
     res = res.replace(/\s+/g, ' ');
-
-    // Normalize parentheses & sets
     res = res.replace(/\(\(+/g, '(');
     res = res.replace(/\)\)+/g, ')');
     res = res.replace(/\\mathbb\{R\}\s*\\mathbb\{R\}/g, '\\mathbb{R}');
@@ -391,12 +405,26 @@ export class MtefDecoder {
     res = res.replace(/\s*\.\s*$/, '');
     res = res.replace(/\\infty\./g, '\\infty');
     res = res.replace(/1\./g, '1');
-
     return res.trim();
   }
 }
 
-export function decodeMtefToLatex(buffer: ArrayBuffer | Uint8Array): string {
-  const decoder = new MtefDecoder(buffer);
-  return decoder.decode();
+const buf = fs.readFileSync('test-files/TN1.docx');
+const entries = unzip(buf);
+
+console.log('--- TEST PRECISE MTEF DECODER ON TN1.docx ---');
+for (let i = 1; i <= 15; i++) {
+  const oleKey = `word/embeddings/oleObject${i}.bin`;
+  if (entries[oleKey]) {
+    const dec = new PreciseMtefDecoder(entries[oleKey]);
+    console.log(`OLE [${oleKey}] -> "${dec.decode()}"`);
+  }
+}
+
+for (let i = 1; i <= 15; i++) {
+  const wmfKey = `word/media/image${i}.wmf`;
+  if (entries[wmfKey]) {
+    const dec = new PreciseMtefDecoder(entries[wmfKey]);
+    console.log(`WMF [${wmfKey}] -> "${dec.decode()}"`);
+  }
 }

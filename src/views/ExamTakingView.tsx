@@ -770,12 +770,20 @@ export const ExamTakingView: React.FC<ExamTakingViewProps> = ({
             {currentQuestion.part === 3 && (
               <div className="space-y-3 pt-1">
                 <textarea
-                  rows={4}
+                  rows={3}
                   value={currentAnswer?.shortAnswer || ''}
                   onChange={(e) => handleShortAnswerChange(currentQuestion.id, e.target.value)}
-                  placeholder="Đáp án của bạn"
+                  placeholder="Nhập số, phân số (ví dụ: 3/4 hoặc 0.75), căn thức hoặc biểu thức..."
                   className="w-full p-4 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white shadow-2xs transition-all resize-y"
                 />
+                {currentAnswer?.shortAnswer?.trim() && (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs flex items-center gap-2">
+                    <span className="font-bold text-slate-500">Xem trước:</span>
+                    <div className="font-bold text-indigo-900">
+                      <MathRenderer content={currentAnswer.shortAnswer.includes('$') ? currentAnswer.shortAnswer : `$${currentAnswer.shortAnswer}$`} inline />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

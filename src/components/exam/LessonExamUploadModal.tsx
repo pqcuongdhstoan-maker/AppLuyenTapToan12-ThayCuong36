@@ -16,13 +16,19 @@ import {
   ChevronRight,
   Info,
   HelpCircle,
-  Download
+  Download,
+  Plus,
+  Trash2,
+  Edit3,
+  Eye,
+  PenTool
 } from 'lucide-react';
-import { Lesson, Exam, Question, QuestionType, DifficultyLevel } from '../../types';
+import { Lesson, Exam, Question, QuestionType, DifficultyLevel, QuestionOption, TrueFalseItem } from '../../types';
 import { storageService } from '../../services/storageService';
 import { parseDocxFile, DocxParsedExam } from '../../services/docxParser';
 import { downloadSampleWordTemplate } from '../../services/docxExporter';
 import { geminiService } from '../../services/geminiService';
+import { RichMathTextInput } from '../math/RichMathTextInput';
 
 interface LessonExamUploadModalProps {
   isOpen: boolean;
@@ -37,12 +43,34 @@ export const LessonExamUploadModal: React.FC<LessonExamUploadModalProps> = ({
   lesson,
   onPreviewParsed
 }) => {
-  const [activeTab, setActiveTab] = useState<'word' | 'json' | 'ai'>('word');
+  const [activeTab, setActiveTab] = useState<'word' | 'manual' | 'json' | 'ai'>('word');
   
   // Word state
   const [isProcessingWord, setIsProcessingWord] = useState(false);
   const [wordDragActive, setWordDragActive] = useState(false);
   const [wordError, setWordError] = useState<string | null>(null);
+
+  // Manual questions state
+  const [manualQuestions, setManualQuestions] = useState<Question[]>([
+    {
+      id: `manual_q_1_1_${Date.now()}`,
+      part: 1,
+      questionNumber: 1,
+      type: QuestionType.MULTIPLE_CHOICE,
+      difficulty: DifficultyLevel.THONG_HIEU,
+      points: 0.25,
+      content: '',
+      options: [
+        { id: 'A', content: '' },
+        { id: 'B', content: '' },
+        { id: 'C', content: '' },
+        { id: 'D', content: '' }
+      ],
+      correctOption: 'A',
+      solution: ''
+    }
+  ]);
+  const [activeQuestionIdx, setActiveQuestionIdx] = useState(0);
 
   // JSON state
   const [jsonText, setJsonText] = useState('');
@@ -64,6 +92,58 @@ export const LessonExamUploadModal: React.FC<LessonExamUploadModalProps> = ({
   if (!isOpen) return null;
 
   const currentExam = storageService.getExamByLessonId(lesson.id);
+
+  // Handle Manual Question helpers
+  const handleAddManualQuestion = (part: 1 | 2 | 3 | 4 = 1) => {
+    const newQNum = manualQuestions.length + 1;
+    const newQ: Question = {
+      id: `manual_q_${part}_${newQNum}_${Date.now()}`,
+      part,
+      questionNumber: newQNum,
+      type: part === 2 ? QuestionType.TRUE_FALSE : part === 3 ? QuestionType.SHORT_ANSWER : part === 4 ? QuestionType.ESSAY : QuestionType.MULTIPLE_CHOICE,
+      difficulty: DifficultyLevel.THONG_HIEU,
+      points: part === 2 ? 1.0 : part === 3 ? 0.5 : part === 4 ? 1.5 : 0.25,
+      content: '',
+      options: part === 1 ? [
+        { id: 'A', content: '' },
+        { id: 'B', content: '' },
+        { id: 'C', content: '' },
+        { id: 'D', content: '' }
+      ] : undefined,
+      correctOption: part === 1 ? 'A' : undefined,
+      trueFalseItems: part === 2 ? [
+        { id: 'a', content: '', correctAnswer: true },
+        { id: 'b', content: '', correctAnswer: false },
+        { id: 'c', content: '', correctAnswer: true },
+        { id: 'd', content: '', correctAnswer: false }
+      ] : undefined,
+      shortAnswerConfig: part === 3 ? { correctAnswers: [''] } : undefined,
+      solution: ''
+    };
+    const updated = [...manualQuestions, newQ];
+    setManualQuestions(updated);
+    setActiveQuestionIdx(updated.length - 1);
+  };
+
+  const handleDeleteManualQuestion = (idx: number) => {
+    if (manualQuestions.length <= 1) return;
+    const updated = manualQuestions.filter((_, i) => i !== idx).map((q, i) => ({ ...q, questionNumber: i + 1 }));
+    setManualQuestions(updated);
+    if (activeQuestionIdx >= updated.length) {
+      setActiveQuestionIdx(updated.length - 1);
+    }
+  };
+
+  const handlePreviewManualExam = () => {
+    const parsed: DocxParsedExam = {
+      title: `Luyện tập: ${lesson.title}`,
+      questions: manualQuestions,
+      rawText: 'Soạn đề thủ công',
+      warnings: [],
+      hasUnconfidentFormulas: false
+    };
+    onPreviewParsed(parsed, lesson);
+  };
 
   // 1. Handle Word (.docx) Import
   const handleWordFile = async (file: File) => {
@@ -339,7 +419,9 @@ Yêu cầu số lượng câu:
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
-      <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-100 animate-in zoom-in-95 overflow-hidden">
+      <div className={`bg-white rounded-3xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-100 animate-in zoom-in-95 overflow-hidden transition-all ${
+        activeTab === 'manual' ? 'max-w-4xl' : 'max-w-2xl'
+      }`}>
         {/* Modal Header */}
         <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
           <div className="space-y-1">
@@ -369,53 +451,353 @@ Yêu cầu số lượng câu:
 
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:bg-slate-200 transition-colors self-start"
+            className="p-2 rounded-xl text-slate-400 hover:bg-slate-200 transition-colors self-start cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* 3 Tabs Selection */}
-        <div className="p-3 bg-slate-100/80 border-b border-slate-200 grid grid-cols-3 gap-1 text-xs">
+        {/* 4 Tabs Selection */}
+        <div className="p-3 bg-slate-100/80 border-b border-slate-200 grid grid-cols-4 gap-1 text-xs">
           <button
             onClick={() => setActiveTab('word')}
-            className={`py-2.5 px-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${
+            className={`py-2 px-2 rounded-xl font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               activeTab === 'word'
                 ? 'bg-white text-indigo-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
             }`}
           >
-            <FileText className="w-4 h-4 text-blue-600" />
-            <span>1. File Word (.docx)</span>
+            <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+            <span className="truncate">1. File Word</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('manual')}
+            className={`py-2 px-2 rounded-xl font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              activeTab === 'manual'
+                ? 'bg-white text-teal-700 shadow-xs ring-1 ring-teal-200'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+            }`}
+          >
+            <PenTool className="w-4 h-4 text-teal-600 shrink-0" />
+            <span className="truncate font-extrabold text-teal-900">2. Soạn thủ công</span>
           </button>
 
           <button
             onClick={() => setActiveTab('json')}
-            className={`py-2.5 px-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${
+            className={`py-2 px-2 rounded-xl font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               activeTab === 'json'
                 ? 'bg-white text-indigo-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
             }`}
           >
-            <Code className="w-4 h-4 text-emerald-600" />
-            <span>2. Tệp / Mã JSON</span>
+            <Code className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="truncate">3. Mã JSON</span>
           </button>
 
           <button
             onClick={() => setActiveTab('ai')}
-            className={`py-2.5 px-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${
+            className={`py-2 px-2 rounded-xl font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
               activeTab === 'ai'
                 ? 'bg-white text-indigo-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
             }`}
           >
-            <Sparkles className="w-4 h-4 text-purple-600" />
-            <span>3. Tạo bằng AI</span>
+            <Sparkles className="w-4 h-4 text-purple-600 shrink-0" />
+            <span className="truncate">4. Tạo bằng AI</span>
           </button>
         </div>
 
         {/* Tab Content Container */}
         <div className="p-6 overflow-y-auto space-y-4 flex-1">
+          {/* --- TAB 2: MANUAL QUESTION BUILDER --- */}
+          {activeTab === 'manual' && (
+            <div className="space-y-4">
+              {/* Question Navigator Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                <div className="flex flex-wrap items-center gap-1.5 max-w-full overflow-x-auto">
+                  {manualQuestions.map((q, qIdx) => (
+                    <button
+                      key={q.id}
+                      type="button"
+                      onClick={() => setActiveQuestionIdx(qIdx)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                        activeQuestionIdx === qIdx
+                          ? 'bg-teal-600 text-white shadow-xs'
+                          : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>Câu {qIdx + 1}</span>
+                      <span className={`text-[10px] px-1 py-0.2 rounded font-mono ${
+                        activeQuestionIdx === qIdx ? 'bg-teal-700 text-teal-100' : 'bg-slate-100 text-slate-500'
+                      }`}>
+                        P{q.part}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleAddManualQuestion(1)}
+                    className="px-3 py-1.5 bg-white hover:bg-teal-50 hover:text-teal-700 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+                    title="Thêm câu hỏi mới"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-teal-600 font-bold" />
+                    <span>Thêm câu</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handlePreviewManualExam}
+                    className="px-4 py-1.5 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white text-xs font-extrabold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>Xem trước & Phê duyệt ({manualQuestions.length} câu)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Current Active Question Editor Form */}
+              {manualQuestions[activeQuestionIdx] && (() => {
+                const curQ = manualQuestions[activeQuestionIdx];
+                const updateCurQ = (patch: Partial<Question>) => {
+                  const updated = [...manualQuestions];
+                  updated[activeQuestionIdx] = { ...curQ, ...patch };
+                  setManualQuestions(updated);
+                };
+
+                return (
+                  <div className="p-5 bg-white border border-slate-200 rounded-3xl space-y-4 shadow-xs">
+                    {/* Part & Points Row */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                      <div className="flex items-center gap-3">
+                        <span className="px-3 py-1 bg-teal-600 text-white font-black text-xs rounded-xl shadow-xs">
+                          CÂU {activeQuestionIdx + 1}
+                        </span>
+
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs font-bold text-slate-600">Loại câu:</label>
+                          <select
+                            value={curQ.part}
+                            onChange={(e) => {
+                              const p = Number(e.target.value) as 1 | 2 | 3 | 4;
+                              updateCurQ({
+                                part: p,
+                                type: p === 2 ? QuestionType.TRUE_FALSE : p === 3 ? QuestionType.SHORT_ANSWER : p === 4 ? QuestionType.ESSAY : QuestionType.MULTIPLE_CHOICE,
+                                points: p === 2 ? 1.0 : p === 3 ? 0.5 : p === 4 ? 1.5 : 0.25,
+                                options: p === 1 ? (curQ.options || [{ id: 'A', content: '' }, { id: 'B', content: '' }, { id: 'C', content: '' }, { id: 'D', content: '' }]) : undefined,
+                                trueFalseItems: p === 2 ? (curQ.trueFalseItems || [{ id: 'a', content: '', correctAnswer: true }, { id: 'b', content: '', correctAnswer: false }, { id: 'c', content: '', correctAnswer: true }, { id: 'd', content: '', correctAnswer: false }]) : undefined,
+                                shortAnswerConfig: p === 3 ? (curQ.shortAnswerConfig || { correctAnswers: [''] }) : undefined
+                              });
+                            }}
+                            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          >
+                            <option value={1}>Phần I: Trắc nghiệm 4 lựa chọn (A, B, C, D)</option>
+                            <option value={2}>Phần II: Trắc nghiệm Đúng / Sai (a, b, c, d)</option>
+                            <option value={3}>Phần III: Trả lời ngắn (Điền số)</option>
+                            <option value={4}>Phần IV: Tự luận</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1 text-xs text-slate-600 font-semibold">
+                          <span>Điểm:</span>
+                          <input
+                            type="number"
+                            step="0.25"
+                            value={curQ.points}
+                            onChange={(e) => updateCurQ({ points: Number(e.target.value) })}
+                            className="w-14 px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-center"
+                          />
+                        </div>
+
+                        {manualQuestions.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteManualQuestion(activeQuestionIdx)}
+                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                            title="Xóa câu hỏi này"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Question Content Editor with RichMathTextInput */}
+                    <div>
+                      <RichMathTextInput
+                        label="Nội dung câu hỏi"
+                        value={curQ.content}
+                        onChange={(val) => updateCurQ({ content: val })}
+                        placeholder="Nhập nội dung đề bài (nhấn 'Chèn công thức' để gõ toán trực quan)..."
+                        rows={3}
+                      />
+                    </div>
+
+                    {/* Part I: 4 Options Editor */}
+                    {curQ.part === 1 && (
+                      <div className="space-y-3 pt-2">
+                        <label className="block text-xs font-bold text-slate-700">4 Phương án lựa chọn &amp; Đáp án đúng:</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {(curQ.options || [
+                            { id: 'A', content: '' },
+                            { id: 'B', content: '' },
+                            { id: 'C', content: '' },
+                            { id: 'D', content: '' }
+                          ]).map((opt, oIdx) => (
+                            <div
+                              key={opt.id}
+                              className={`p-3 rounded-2xl border flex flex-col gap-2 ${
+                                opt.id === curQ.correctOption
+                                  ? 'bg-emerald-50/70 border-emerald-300 ring-2 ring-emerald-100'
+                                  : 'bg-slate-50/70 border-slate-200'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name={`manual_correct_opt_${curQ.id}`}
+                                    checked={opt.id === curQ.correctOption}
+                                    onChange={() => updateCurQ({ correctOption: opt.id })}
+                                    className="w-4 h-4 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                  />
+                                  <span className="font-extrabold text-xs text-slate-800">
+                                    Phương án {opt.id} {opt.id === curQ.correctOption && <strong className="text-emerald-700">(Đáp án đúng)</strong>}
+                                  </span>
+                                </label>
+                              </div>
+                              <RichMathTextInput
+                                value={opt.content}
+                                onChange={(val) => {
+                                  const opts = [...(curQ.options || [])];
+                                  opts[oIdx] = { ...opt, content: val };
+                                  updateCurQ({ options: opts });
+                                }}
+                                placeholder={`Nội dung phương án ${opt.id}...`}
+                                rows={1}
+                                minHeight="45px"
+                                showPreview={false}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Part II: 4 True/False Items Editor */}
+                    {curQ.part === 2 && (
+                      <div className="space-y-3 pt-2">
+                        <label className="block text-xs font-bold text-slate-700">4 Mệnh đề Đúng / Sai:</label>
+                        <div className="space-y-3">
+                          {(curQ.trueFalseItems || [
+                            { id: 'a', content: '', correctAnswer: true },
+                            { id: 'b', content: '', correctAnswer: false },
+                            { id: 'c', content: '', correctAnswer: true },
+                            { id: 'd', content: '', correctAnswer: false }
+                          ]).map((tf, tfIdx) => (
+                            <div key={tf.id} className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                              <span className="font-bold uppercase text-xs w-6 shrink-0 text-slate-700">{tf.id})</span>
+                              <div className="flex-1 w-full">
+                                <RichMathTextInput
+                                  value={tf.content}
+                                  onChange={(val) => {
+                                    const items = [...(curQ.trueFalseItems || [])];
+                                    items[tfIdx] = { ...tf, content: val };
+                                    updateCurQ({ trueFalseItems: items });
+                                  }}
+                                  placeholder={`Nội dung mệnh đề ${tf.id}...`}
+                                  rows={1}
+                                  minHeight="45px"
+                                  showPreview={false}
+                                />
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const items = [...(curQ.trueFalseItems || [])];
+                                    items[tfIdx] = { ...tf, correctAnswer: true };
+                                    updateCurQ({ trueFalseItems: items });
+                                  }}
+                                  className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                                    tf.correctAnswer === true
+                                      ? 'bg-emerald-600 text-white shadow-xs'
+                                      : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
+                                  }`}
+                                >
+                                  Đúng
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const items = [...(curQ.trueFalseItems || [])];
+                                    items[tfIdx] = { ...tf, correctAnswer: false };
+                                    updateCurQ({ trueFalseItems: items });
+                                  }}
+                                  className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                                    tf.correctAnswer === false
+                                      ? 'bg-rose-600 text-white shadow-xs'
+                                      : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
+                                  }`}
+                                >
+                                  Sai
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Part III: Short Answer Editor */}
+                    {curQ.part === 3 && (
+                      <div className="space-y-3 pt-2">
+                        <RichMathTextInput
+                          label="Đáp số trả lời ngắn đúng"
+                          value={curQ.shortAnswerConfig?.correctAnswers[0] || ''}
+                          onChange={(val) => updateCurQ({ shortAnswerConfig: { correctAnswers: [val] } })}
+                          placeholder="Ví dụ: -199 hoặc 3/4 hoặc 0.75"
+                          rows={1}
+                          minHeight="45px"
+                        />
+                      </div>
+                    )}
+
+                    {/* Part IV: Essay Guide */}
+                    {curQ.part === 4 && (
+                      <div className="space-y-3 pt-2">
+                        <RichMathTextInput
+                          label="Hướng dẫn chấm tự luận / Barem điểm"
+                          value={curQ.essayGuide || ''}
+                          onChange={(val) => updateCurQ({ essayGuide: val })}
+                          placeholder="Nhập tiêu chí chấm điểm và các bước giải chính xác..."
+                          rows={2}
+                          minHeight="60px"
+                        />
+                      </div>
+                    )}
+
+                    {/* Solution Editor */}
+                    <div className="pt-2">
+                      <RichMathTextInput
+                        label="Lời giải chi tiết (Hiển thị sau khi thi)"
+                        value={curQ.solution || ''}
+                        onChange={(val) => updateCurQ({ solution: val })}
+                        placeholder="Nhập các bước biến đổi và lời giải chi tiết..."
+                        rows={2}
+                        minHeight="60px"
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
           {/* --- TAB 1: WORD .DOCX --- */}
           {activeTab === 'word' && (
             <div className="space-y-4">
