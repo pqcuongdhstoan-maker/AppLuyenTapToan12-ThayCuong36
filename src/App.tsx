@@ -220,10 +220,10 @@ export default function App() {
                 className="w-5 h-5 object-contain inline-block"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
-              <span>TRƯỜNG THPT ĐỨC HÒA • LUYỆN TẬP TOÁN 12 - KNTT</span>
+              <span>TRƯỜNG THPT ĐỨC HÒA • TOÁN THPT</span>
             </div>
             <p className="text-[11px] text-slate-400">
-              Chương trình Giáo dục phổ thông 2018 – Bộ sách Kết nối tri thức với cuộc sống • Giáo viên phụ trách: <strong>GV. Phan Quốc Cường</strong>
+              Chương trình Giáo dục phổ thông 2018 • Giáo viên phụ trách: <strong>GV. Phan Quốc Cường</strong>
             </p>
             <div className="pt-2 text-[10px] text-slate-400 flex items-center justify-center gap-1">
               <span>Hệ thống hỗ trợ khảo thí trực tuyến & KaTeX Math Render</span>

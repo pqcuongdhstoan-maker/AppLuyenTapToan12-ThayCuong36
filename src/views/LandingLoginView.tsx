@@ -90,11 +90,11 @@ export const LandingLoginView: React.FC<LandingLoginViewProps> = ({ onLoginSucce
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight flex items-center justify-center gap-1.5">
-            <span>Xin chào bạn yêu!</span>
+            <span>TOÁN THPT</span>
             <span className="text-amber-500 animate-bounce">✨</span>
           </h1>
           <p className="text-xs sm:text-sm font-semibold text-slate-500 mt-1">
-            Hệ thống Tự Luyện Toán 12 – Thầy Phan Quốc Cường
+            Hệ thống Tự Luyện TOÁN THPT – Thầy Phan Quốc Cường
           </p>
         </div>
 
@@ -241,7 +241,7 @@ export const LandingLoginView: React.FC<LandingLoginViewProps> = ({ onLoginSucce
 
         {/* Footer info */}
         <div className="mt-5 text-center text-[10px] text-slate-400 font-medium flex items-center justify-center gap-1.5">
-          <span>📚 App Luyện Tập Toán 12</span>
+          <span>📚 TOÁN THPT</span>
           <span>•</span>
           <span>Thầy Phan Quốc Cường</span>
         </div>

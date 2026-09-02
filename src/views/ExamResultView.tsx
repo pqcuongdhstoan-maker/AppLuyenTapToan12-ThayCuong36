@@ -104,7 +104,7 @@ Yêu cầu: Hãy giải thích chi tiết, cặn kẽ và trực quan cho học 
         </div>
 
         <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
-          KẾT QUẢ BÀI LUYỆN TẬP TOÁN 12
+          KẾT QUẢ BÀI LUYỆN TẬP TOÁN THPT
         </div>
         <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 mb-1">
           {attempt.lessonTitle}

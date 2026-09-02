@@ -157,7 +157,7 @@ export function exportExamToDocx(exam: Exam, lesson?: Lesson): void {
       </td>
       <td style="width: 55%; text-align: center;">
         <div class="exam-title-box">
-          LUYỆN TẬP TOÁN 12 - KNTT<br>
+          TOÁN THPT<br>
           <span style="font-size: 11pt; font-weight: normal;">BÀI ${lessonNumber}: ${lessonTitle}</span>
         </div>
         <div style="font-size: 11pt; font-style: italic; margin-top: 4px;">

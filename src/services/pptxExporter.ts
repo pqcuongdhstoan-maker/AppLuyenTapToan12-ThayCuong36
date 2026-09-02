@@ -223,7 +223,7 @@ export function exportLessonToPptx(lesson: Lesson, exam?: Exam): void {
         <div class="highlight-card" style="margin-bottom: 15px;">
           <strong style="color: #38bdf8;">📝 Luyện tập trực tuyến:</strong>
           <p style="margin: 6px 0 0 0;">
-            1. Đăng nhập ứng dụng <strong>Luyện tập Toán 12 - KNTT</strong> trên máy tính/điện thoại.<br>
+            1. Đăng nhập ứng dụng <strong>TOÁN THPT</strong> trên máy tính/điện thoại.<br>
             2. Hoàn thành đề luyện tập <strong>Bài ${lesson.number}: ${lesson.title}</strong> (Đủ 4 phần thi).<br>
             3. Theo dõi bảng điểm và xem giải thích chi tiết của Giáo viên & AI.
           </p>

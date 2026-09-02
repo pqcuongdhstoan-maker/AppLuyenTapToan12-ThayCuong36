@@ -60,7 +60,7 @@ export const StudentInfoModal: React.FC<StudentInfoModalProps> = ({
             XÁC NHẬN THÔNG TIN HỌC SINH
           </h3>
           <p className="text-xs text-slate-500 mt-1">
-            Vui lòng kiểm tra và xác nhận Họ tên và Lớp trước khi bắt đầu Luyện tập Toán 12 - KNTT
+            Vui lòng kiểm tra và xác nhận Họ tên và Lớp trước khi bắt đầu bài học TOÁN THPT
           </p>
         </div>
 

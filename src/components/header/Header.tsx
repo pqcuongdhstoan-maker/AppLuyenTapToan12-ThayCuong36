@@ -160,7 +160,7 @@ export const Header: React.FC<HeaderProps> = ({
                   </span>
                 </div>
                 <h1 className="text-sm sm:text-base font-black text-slate-900 leading-tight group-hover:text-indigo-600 transition-colors">
-                  TOÁN 12 - KNTT
+                  TOÁN THPT
                 </h1>
                 <div className="text-[10px] sm:text-[11px] text-indigo-700 font-semibold leading-none hidden sm:block">
                   GV. PHAN QUỐC CƯỜNG

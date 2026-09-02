@@ -37,7 +37,7 @@ function getAiClient(): GoogleGenAI {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    appName: 'Luyện tập Toán 12 - KNTT',
+    appName: 'TOÁN THPT',
     teacher: 'GV. Phan Quốc Cường',
     timestamp: new Date().toISOString()
   });
@@ -490,7 +490,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Hệ thống Luyện tập Toán 12 - KNTT đang chạy tại http://0.0.0.0:${PORT}`);
+    console.log(`🚀 Hệ thống TOÁN THPT đang chạy tại http://0.0.0.0:${PORT}`);
   });
 }
 

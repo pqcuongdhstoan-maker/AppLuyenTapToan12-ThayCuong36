@@ -1,6 +1,6 @@
 {
-  "name": "Luyện tập Toán 12 - KNTT",
-  "description": "Hệ thống Tự Luyện Toán 12 theo Chương trình GDPT 2018 - Kết nối tri thức với cuộc sống, Trường THPT Đức Hòa - GV Phan Quốc Cường.",
+  "name": "TOÁN THPT",
+  "description": "Hệ thống Tự Luyện TOÁN THPT theo Chương trình GDPT 2018, Trường THPT Đức Hòa - GV Phan Quốc Cường.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

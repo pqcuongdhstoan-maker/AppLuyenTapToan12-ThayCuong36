@@ -27,7 +27,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-xs font-semibold tracking-wide text-indigo-100 shadow-xs">
             <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
-            <span>✨ LUYỆN TẬP TOÁN 12 - KNTT • CT GDPT 2018</span>
+            <span>✨ TOÁN THPT • CT GDPT 2018</span>
           </div>
 
           {/* Dynamic Greeting */}
@@ -37,7 +37,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
 
           {/* Subtitle description */}
           <p className="text-sm sm:text-base text-indigo-100 max-w-2xl leading-relaxed">
-            Luyện tập theo từng bài học Toán 12 với đầy đủ 4 dạng đề thi: Trắc nghiệm nhiều lựa chọn, Đúng/Sai, Trả lời ngắn và Tự luận theo chuẩn cấu trúc Bộ GD&ĐT.
+            Hệ thống tự luyện TOÁN THPT với đầy đủ 4 dạng đề thi: Trắc nghiệm nhiều lựa chọn, Đúng/Sai, Trả lời ngắn và Tự luận theo chuẩn cấu trúc Bộ GD&ĐT.
           </p>
 
           {/* Quick Stats Badges */}

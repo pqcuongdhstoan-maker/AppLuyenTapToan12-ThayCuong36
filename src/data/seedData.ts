@@ -94,7 +94,7 @@ export const INITIAL_USERS: User[] = [
 export const INITIAL_SYSTEM_SETTINGS: SystemSettings = {
   schoolName: 'TRƯỜNG THPT ĐỨC HÒA',
   teacherName: 'GV. PHAN QUỐC CƯỜNG',
-  appTitle: 'Luyện tập Toán 12 - KNTT',
+  appTitle: 'TOÁN THPT',
   schoolYear: '2026 - 2027',
   geminiModel: 'gemini-3.7-flash',
   adminPassword: '123',
