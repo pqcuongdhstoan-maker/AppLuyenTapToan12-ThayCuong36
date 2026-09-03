@@ -7,32 +7,57 @@
 }
 
 .katex {
-  font-size: 1.12em;
-  text-rendering: geometricPrecision;
+  font-size: 1.06em;
+  text-rendering: auto;
 }
 
 .katex-html {
   overflow: visible;
 }
 
-/* Align inline formulas with running text */
-.math-content .katex {
-  vertical-align: -0.1em;
+/* Perfect Baseline Alignment for Inline Formulas */
+.math-inline {
+  display: inline;
+  vertical-align: baseline;
+  white-space: normal;
+  padding: 0 0.08em;
+}
+
+.math-inline .katex {
+  display: inline;
+  font-size: 1.05em;
+  line-height: inherit;
+  vertical-align: baseline;
+}
+
+.math-inline .katex .katex-html {
+  display: inline-block;
+  vertical-align: baseline;
+}
+
+.math-inline .katex .katex-html > .base {
+  display: inline-block;
+  vertical-align: baseline;
 }
 
 /* KaTeX Display Blocks */
+.math-display,
 .katex-display {
+  display: block;
   margin: 0.85em 0 !important;
   overflow-x: auto;
   overflow-y: hidden;
   padding: 0.35rem 0;
+  text-align: center;
   -webkit-overflow-scrolling: touch;
 }
 
 /* Custom Scrollbar for Long Equations / Tables */
+.math-display::-webkit-scrollbar,
 .katex-display::-webkit-scrollbar {
   height: 4px;
 }
+.math-display::-webkit-scrollbar-thumb,
 .katex-display::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 4px;
@@ -40,7 +65,7 @@
 
 /* Math container readability */
 .math-content {
-  line-height: 2.2;
+  line-height: 1.75;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
@@ -52,14 +77,21 @@
 }
 
 .question-text {
-  line-height: 1.65;
+  line-height: 1.75;
   white-space: normal;
   overflow-wrap: anywhere;
 }
 
-.question-text .katex,
-.math-content .katex {
-  vertical-align: baseline;
+/* Inline formula images (MathType SVG/PNG) */
+.math-content img.inline-math-img,
+img.math-inline-img,
+.math-inline img {
+  display: inline-block;
+  vertical-align: -0.22em;
+  height: 1.25em;
+  max-height: 1.7em;
+  width: auto;
+  margin: 0 2px;
 }
 
 .question-image {

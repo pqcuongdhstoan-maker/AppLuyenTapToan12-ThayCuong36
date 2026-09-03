@@ -401,7 +401,7 @@ export function renderFormattedText(content: string): string {
         const src = imgMatch[2];
         const isInline = src.startsWith('data:image/svg+xml') || alt.toLowerCase().includes('công thức') || alt.toLowerCase().includes('mathtype');
         if (isInline) {
-          return `<img src="${src}" alt="" class="inline-block max-h-8 align-middle my-0.5 mx-1 select-none" />`;
+          return `<img src="${src}" alt="" class="inline-block max-h-7 align-[-0.22em] mx-0.5 select-none" />`;
         }
         const cleanCaption = (alt && !alt.toLowerCase().includes('hình minh họa') && !alt.toLowerCase().includes('image') && !alt.toLowerCase().includes('mathtype') && !alt.toLowerCase().includes('công thức')) ? alt.trim() : '';
         return `<figure class="question-image my-3 flex flex-col items-center justify-center">
@@ -446,7 +446,7 @@ export function renderFormattedText(content: string): string {
             trust: true,
             output: 'html'
           });
-          return `<span class="math-inline inline-block align-middle my-0.5" data-raw-math="${escapeHtml(cleanMath)}">${mathHtml}</span>`;
+          return `<span class="math-inline" data-raw-math="${escapeHtml(cleanMath)}">${mathHtml}</span>`;
         } catch {
           return `<span class="katex-error text-rose-500 font-mono text-xs">[${escapeHtml(rawMath)}]</span>`;
         }
@@ -503,7 +503,7 @@ export const MathRenderer: React.FC<MathRendererProps> = ({
               });
               return isDisplay
                 ? `<div class="math-display my-2 overflow-x-auto py-1 text-center" data-raw-math="${escapeHtml(rawMath)}">${html}</div>`
-                : `<span class="math-inline inline-block align-middle my-0.5" data-raw-math="${escapeHtml(rawMath)}">${html}</span>`;
+                : `<span class="math-inline" data-raw-math="${escapeHtml(rawMath)}">${html}</span>`;
             } catch {
               return `<span class="katex-error text-rose-500 font-mono text-xs">[Lỗi công thức: ${escapeHtml(rawMath)}]</span>`;
             }
@@ -517,12 +517,12 @@ export const MathRenderer: React.FC<MathRendererProps> = ({
             }
           }
           if (block.type === 'math-image') {
-            return `<img src="${block.url || ''}" alt="" class="inline-block max-h-8 align-middle my-0.5 mx-0.5 select-none" />`;
+            return `<img src="${block.url || ''}" alt="" class="inline-block max-h-7 align-[-0.22em] mx-0.5 select-none" />`;
           }
           if (block.type === 'image' || block.kind === 'image') {
             const isInline = (block.url || '').startsWith('data:image/svg+xml') || (block.alt || '').toLowerCase().includes('công thức') || (block.alt || '').toLowerCase().includes('mathtype');
             if (isInline) {
-              return `<img src="${block.url || ''}" alt="" class="inline-block max-h-8 align-middle my-0.5 mx-0.5 select-none" />`;
+              return `<img src="${block.url || ''}" alt="" class="inline-block max-h-7 align-[-0.22em] mx-0.5 select-none" />`;
             }
             const cleanCaption = (block.alt && !block.alt.toLowerCase().includes('hình minh họa') && !block.alt.toLowerCase().includes('image') && !block.alt.toLowerCase().includes('mathtype') && !block.alt.toLowerCase().includes('công thức')) ? block.alt.trim() : '';
             return `<figure class="question-image my-3 flex flex-col items-center justify-center">

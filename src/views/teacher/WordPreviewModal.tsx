@@ -770,8 +770,8 @@ export const WordPreviewModal: React.FC<WordPreviewModalProps> = ({
                           {q.trueFalseItems.map((item) => (
                             <div key={item.id} className="flex items-center gap-2.5">
                               <div className="flex-1 p-2.5 rounded-xl bg-white border border-slate-200 text-slate-900 flex items-start gap-2 shadow-2xs">
-                                <span className="font-bold shrink-0">{item.id})</span>
-                                <div className="leading-relaxed">
+                                <span className="font-bold shrink-0 text-slate-800">{item.id})</span>
+                                <div className="flex-1 leading-relaxed">
                                   <MathRenderer blocks={item.contentBlocks} content={item.content} />
                                 </div>
                               </div>

@@ -729,8 +729,8 @@ export const ExamTakingView: React.FC<ExamTakingViewProps> = ({
                     >
                       {/* Proposition content in rounded box */}
                       <div className="flex-1 px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-900 flex items-start gap-2 shadow-2xs">
-                        <span className="font-bold shrink-0">{item.id})</span>
-                        <div className="leading-relaxed">
+                        <span className="font-bold shrink-0 text-slate-800">{item.id})</span>
+                        <div className="flex-1 leading-relaxed">
                           <MathRenderer blocks={item.contentBlocks} content={item.content} />
                         </div>
                       </div>
